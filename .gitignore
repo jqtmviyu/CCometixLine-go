@@ -1,0 +1,43 @@
+# macos
+**/.DS_Store
+
+# windows
+**/desktop.ini
+
+# vscode
+**/.vscode
+
+# node
+**/node_modules
+**/npm-debug.log*
+**/yarn-error.log
+
+# python
+**/__pycache__
+**/.envrc
+**/.venv
+**/venv
+
+# log
+**/logs
+**/*.log
+**/*.log.*
+
+# config
+**/config.yml
+**/config.ini
+**/config.json
+**/*.local
+
+# tmp
+**/*.tmp
+**/*.temp
+**/*.swp
+
+# build
+**/build
+
+# claude
+CLAUDE.md
+AGENT.md
+.claude
