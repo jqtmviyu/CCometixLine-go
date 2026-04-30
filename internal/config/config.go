@@ -192,7 +192,7 @@ var defaultSegmentDefs = []segmentDefaults{
 	{SegmentModel, true, "🤖", "\uE26D", 14, 14, nil},
 	{SegmentEffort, true, "🧠", "\uF0A39", 13, 13, nil},
 	{SegmentDirectory, true, "📁", "\uF024B", 11, 10, nil},
-	{SegmentGit, true, "🌿", "\uF02A2", 12, 12, map[string]any{"show_sha": false}},
+	{SegmentGit, true, "🌿", "\uF02A2", 12, 12, nil},
 	{SegmentContextWindow, true, "⚡️", "\uF49B", 13, 13, nil},
 	{SegmentCost, false, "💰", "\uEEC1", 3, 3, nil},
 	{SegmentSession, false, "⏱️", "\uF19BB", 2, 2, nil},

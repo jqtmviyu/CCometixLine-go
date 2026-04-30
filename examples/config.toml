@@ -59,7 +59,6 @@ c16 = 12
 [segments.styles]
 text_bold = false
 [segments.options]
-show_sha = true
 
 [[segments]]
 id = "context_window"

@@ -38,7 +38,7 @@ func TestGitSegmentCollectsDirtyRepo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	segment := GitSegment{Input: protocol.InputData{Workspace: protocol.Workspace{CurrentDir: dir}}, ShowSHA: true}
+	segment := GitSegment{Input: protocol.InputData{Workspace: protocol.Workspace{CurrentDir: dir}}}
 	data := segment.Collect()
 	if data == nil {
 		t.Fatal("expected git data")
@@ -48,9 +48,6 @@ func TestGitSegmentCollectsDirtyRepo(t *testing.T) {
 	}
 	if !strings.Contains(data.Secondary, "●") {
 		t.Fatalf("expected dirty marker, got %q", data.Secondary)
-	}
-	if data.Metadata["sha"] == "" {
-		t.Fatal("expected sha metadata")
 	}
 }
 

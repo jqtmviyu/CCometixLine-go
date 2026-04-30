@@ -22,7 +22,7 @@ func CollectAll(cfg config.Config, modelConfig config.ModelConfig, input protoco
 		case config.SegmentDirectory:
 			segment = DirectorySegment{Input: input}
 		case config.SegmentGit:
-			segment = GitSegment{Input: input, ShowSHA: config.Option[bool](segmentConfig.Options, "show_sha", false)}
+			segment = GitSegment{Input: input}
 		case config.SegmentContextWindow:
 			segment = ContextWindowSegment{Input: input, ModelConfig: modelConfig}
 		case config.SegmentCost:

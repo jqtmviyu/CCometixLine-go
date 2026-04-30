@@ -10,7 +10,6 @@ import (
 type GitInfo struct {
 	Branch string
 	Status GitStatus
-	SHA    string
 }
 
 type GitStatus string
@@ -22,8 +21,7 @@ const (
 )
 
 type GitSegment struct {
-	Input   protocol.InputData
-	ShowSHA bool
+	Input protocol.InputData
 }
 
 func (s GitSegment) Collect() *SegmentData {
@@ -36,9 +34,6 @@ func (s GitSegment) Collect() *SegmentData {
 		"branch": info.Branch,
 		"status": string(info.Status),
 	}
-	if info.SHA != "" {
-		metadata["sha"] = info.SHA
-	}
 
 	statusParts := []string{}
 	switch info.Status {
@@ -49,9 +44,6 @@ func (s GitSegment) Collect() *SegmentData {
 	case GitStatusConflicts:
 		statusParts = append(statusParts, "⚠")
 	}
-	if info.SHA != "" {
-		statusParts = append(statusParts, info.SHA)
-	}
 
 	return &SegmentData{
 		Primary:   info.Branch,
@@ -61,7 +53,7 @@ func (s GitSegment) Collect() *SegmentData {
 }
 
 func (s GitSegment) getGitInfo(workingDir string) (GitInfo, bool) {
-	branch, sha, ok := resolveGitHead(workingDir)
+	branch, ok := resolveGitHead(workingDir)
 	if !ok {
 		return GitInfo{}, false
 	}
@@ -69,39 +61,27 @@ func (s GitSegment) getGitInfo(workingDir string) (GitInfo, bool) {
 		branch = "detached"
 	}
 
-	info := GitInfo{
+	return GitInfo{
 		Branch: branch,
 		Status: s.getStatus(workingDir),
-	}
-	if s.ShowSHA {
-		info.SHA = sha
-	}
-	return info, true
+	}, true
 }
 
-func resolveGitHead(workingDir string) (string, string, bool) {
-	output, err := runGit(workingDir, "symbolic-ref", "--short", "HEAD")
-	if err == nil {
-		branch := strings.TrimSpace(output)
-		if branch != "" {
-			sha, _ := gitShortSHA(workingDir)
-			return branch, sha, true
-		}
+func resolveGitHead(workingDir string) (string, bool) {
+	if _, err := runGit(workingDir, "rev-parse", "--git-dir"); err != nil {
+		return "", false
 	}
 
-	sha, err := gitShortSHA(workingDir)
+	output, err := runGit(workingDir, "branch", "--show-current")
 	if err != nil {
-		return "", "", false
+		return "detached", true
 	}
-	return "detached", sha, true
-}
 
-func gitShortSHA(workingDir string) (string, error) {
-	output, err := runGit(workingDir, "rev-parse", "--short=7", "HEAD")
-	if err != nil {
-		return "", err
+	branch := strings.TrimSpace(output)
+	if branch == "" {
+		return "detached", true
 	}
-	return strings.TrimSpace(output), nil
+	return branch, true
 }
 
 func (s GitSegment) getStatus(workingDir string) GitStatus {
