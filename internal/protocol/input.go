@@ -30,11 +30,15 @@ type ContextWindowUsage struct {
 	Raw    *RawUsage
 }
 
+type Effort struct {
+	Level string `json:"level"`
+}
+
 type InputData struct {
 	Model          Model          `json:"model"`
 	Workspace      Workspace      `json:"workspace"`
 	TranscriptPath string         `json:"transcript_path"`
-	Effort         string         `json:"effort"`
+	Effort         *Effort        `json:"effort"`
 	Cost           *Cost          `json:"cost"`
 	ContextWindow  *ContextWindow `json:"context_window"`
 }

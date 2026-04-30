@@ -6,14 +6,14 @@ import (
 )
 
 func TestInputDataParsesEffort(t *testing.T) {
-	payload := []byte(`{"model":{"id":"claude-sonnet-4-5-20250929","display_name":"Claude Sonnet 4.5"},"workspace":{"current_dir":"D:/Work-Hxx/Demo/statusLine/CCometixLine-go"},"effort":"high"}`)
+	payload := []byte(`{"model":{"id":"claude-sonnet-4-5-20250929","display_name":"Claude Sonnet 4.5"},"workspace":{"current_dir":"D:/Work-Hxx/Demo/statusLine/CCometixLine-go"},"effort":{"level":"high"}}`)
 
 	var input InputData
 	if err := json.Unmarshal(payload, &input); err != nil {
 		t.Fatal(err)
 	}
-	if input.Effort != "high" {
-		t.Fatalf("expected effort high, got %q", input.Effort)
+	if input.Effort == nil || input.Effort.Level != "high" {
+		t.Fatalf("expected effort high, got %#v", input.Effort)
 	}
 }
 

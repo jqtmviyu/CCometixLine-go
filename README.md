@@ -71,11 +71,9 @@ go test ./...
 
 ### effort
 
-- 优先级：环境变量 `CLAUDE_CODE_EFFORT_LEVEL` > 输入 JSON `effort` > `.claude/settings.local.json` > `.claude/settings.json` > `~/.claude/settings.json`
+- 读取输入 JSON `effort.level`
 - 已知值：`low`、`medium`、`high`、`xhigh`、`max`
-- `auto` 会显示为 `auto`
-- 未知值如果匹配 `^[a-z0-9-]{2,20}$`，会显示为 `<value>?`
-- 其他无效值会回退为 `auto`
+- 默认值：`auto`
 
 ### environment
 

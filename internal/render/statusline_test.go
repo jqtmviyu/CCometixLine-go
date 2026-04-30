@@ -27,7 +27,7 @@ func TestGenerateStatusLine(t *testing.T) {
 	input := protocol.InputData{
 		Model:     protocol.Model{ID: "claude-sonnet-4-5-20250929", DisplayName: "Claude Sonnet 4.5"},
 		Workspace: protocol.Workspace{CurrentDir: "D:/Work-Hxx/Demo/statusLine/CCometixLine-go"},
-		Effort:    "high",
+		Effort:    &protocol.Effort{Level: "high"},
 		Cost: &protocol.Cost{
 			TotalCostUSD:       &cost,
 			TotalDurationMS:    &duration,
