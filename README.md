@@ -81,7 +81,7 @@ go test ./...
 
 - `mem` 统计 `CLAUDE.md / CLAUDE.local.md / rules/**/*.md`
 - `mcp` 参考 claude-hud 统计已开启配置
-- `skills` 优先统计已启用插件命令 + 本地 `commands/**/*.md`
+- `skills` 优先统计已启用插件命令 + 本地 `skills/**/*.md`
 - `plugins` 统计已启用插件；拿不到时显示 `?`
 
 ## 配置与默认行为

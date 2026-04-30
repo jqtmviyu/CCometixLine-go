@@ -86,8 +86,8 @@ func CountEnvironment(cwd string) EnvironmentCounts {
 
 func countEnabledSkills(cwd string, claudeDir string, settingsPath string, installedPluginsPath string) (int, bool) {
 	count := 0
-	count += countMarkdownFiles(filepath.Join(claudeDir, "commands"))
-	count += countMarkdownFiles(filepath.Join(cwd, ".claude", "commands"))
+	count += countMarkdownFiles(filepath.Join(claudeDir, "skills"))
+	count += countMarkdownFiles(filepath.Join(cwd, ".claude", "skills"))
 
 	enabledPlugins, ok := readEnabledPlugins(settingsPath)
 	if ok {

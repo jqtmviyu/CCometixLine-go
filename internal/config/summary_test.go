@@ -37,7 +37,7 @@ func TestCountEnvironmentCountsMemoryMCPPluginsAndSkills(t *testing.T) {
 	writeJSON(t, filepath.Join(home, "plugins", "cache", "plugin-a", ".claude-plugin", "plugin.json"), map[string]any{
 		"commands": []string{"./commands/one.md", "./commands/two.md"},
 	})
-	writeFile(t, filepath.Join(home, "commands", "user.md"), "cmd")
+	writeFile(t, filepath.Join(home, "skills", "user.md"), "cmd")
 
 	writeFile(t, filepath.Join(project, "CLAUDE.md"), "project")
 	writeFile(t, filepath.Join(project, "CLAUDE.local.md"), "project-local")
@@ -54,7 +54,7 @@ func TestCountEnvironmentCountsMemoryMCPPluginsAndSkills(t *testing.T) {
 	writeJSON(t, filepath.Join(project, ".mcp.json"), map[string]any{
 		"mcpServers": map[string]any{"project-mcp": map[string]any{}, "project-extra": map[string]any{}},
 	})
-	writeFile(t, filepath.Join(project, ".claude", "commands", "project.md"), "cmd")
+	writeFile(t, filepath.Join(project, ".claude", "skills", "project.md"), "cmd")
 
 	counts := CountEnvironment(project)
 	if counts.MemoryFiles != 7 {
