@@ -74,6 +74,8 @@ func defaultModelConfig() ModelConfig {
 			{Pattern: "kimi-k2-turbo", DisplayName: "Kimi K2 Turbo", ContextLimit: 128000},
 			{Pattern: "kimi-k2", DisplayName: "Kimi K2", ContextLimit: 128000},
 			{Pattern: "qwen3-coder", DisplayName: "Qwen Coder", ContextLimit: 256000},
+			{Pattern: "deepseek-v4-flash", DisplayName: "DeepSeek-V4-Flash", ContextLimit: 1000000},
+			{Pattern: "deepseek-v4-pro", DisplayName: "DeepSeek-V4-Pro", ContextLimit: 1000000},
 		},
 		ContextModifiers: []ContextModifier{
 			{Pattern: "[1m]", DisplaySuffix: " 1M", ContextLimit: 1000000},
