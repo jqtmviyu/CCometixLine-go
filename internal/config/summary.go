@@ -17,6 +17,21 @@ type EnvironmentCounts struct {
 	PluginsKnown bool
 }
 
+type parsedSettings struct {
+	MCPServers             map[string]json.RawMessage `json:"mcpServers"`
+	EnabledPlugins         map[string]bool            `json:"enabledPlugins"`
+	DisabledMCPServers     []any                      `json:"disabledMcpServers"`
+	DisabledMCPJSONServers []any                      `json:"disabledMcpjsonServers"`
+}
+
+type pluginInstall struct {
+	InstallPath string `json:"installPath"`
+}
+
+type parsedPluginIndex struct {
+	Plugins map[string][]pluginInstall `json:"plugins"`
+}
+
 type disabledMcpKey string
 
 const (
@@ -34,6 +49,15 @@ func CountEnvironment(cwd string) EnvironmentCounts {
 	projectLocalSettingsPath := filepath.Join(projectClaudeDir, "settings.local.json")
 	projectOverlapsUser := pathsReferToSameLocation(projectClaudeDir, claudeDir)
 
+	userSettings := readSettingsFile(claudeSettingsPath)
+	userClaudeJSON := readSettingsFile(claudeJSONPath)
+	projectSettings := parsedSettings{}
+	if !projectOverlapsUser {
+		projectSettings = readSettingsFile(projectSettingsPath)
+	}
+	projectLocalSettings := readSettingsFile(projectLocalSettingsPath)
+	pluginIndex, pluginIndexKnown := readPluginIndex(installedPluginsPath)
+
 	userClaudePath := filepath.Join(claudeDir, "CLAUDE.md")
 	memoryFiles := 0
 	memoryFiles += countIfFile(userClaudePath)
@@ -46,33 +70,34 @@ func CountEnvironment(cwd string) EnvironmentCounts {
 	}
 	memoryFiles += countIfFile(filepath.Join(projectClaudeDir, "CLAUDE.local.md"))
 
-	userMCPs := getMCPServerNames(claudeSettingsPath)
-	for name := range getMCPServerNames(claudeJSONPath) {
+	userMCPs := namesFromRawMap(userSettings.MCPServers)
+	for name := range namesFromRawMap(userClaudeJSON.MCPServers) {
 		userMCPs[name] = struct{}{}
 	}
-	for name := range getDisabledMCPServers(claudeJSONPath, disabledMcpServersKey) {
+	for name := range valuesToNameSet(userClaudeJSON.DisabledMCPServers) {
 		delete(userMCPs, name)
 	}
 
 	projectMCPs := map[string]struct{}{}
 	if !projectOverlapsUser {
-		for name := range getMCPServerNames(projectSettingsPath) {
+		for name := range namesFromRawMap(projectSettings.MCPServers) {
 			projectMCPs[name] = struct{}{}
 		}
 	}
-	for name := range getMCPServerNames(projectLocalSettingsPath) {
+	for name := range namesFromRawMap(projectLocalSettings.MCPServers) {
 		projectMCPs[name] = struct{}{}
 	}
 	mcpJSONServers := getMCPServerNames(filepath.Join(cwd, ".mcp.json"))
-	for name := range getDisabledMCPServers(projectLocalSettingsPath, disabledMcpJSONServersKey) {
+	for name := range valuesToNameSet(projectLocalSettings.DisabledMCPJSONServers) {
 		delete(mcpJSONServers, name)
 	}
 	for name := range mcpJSONServers {
 		projectMCPs[name] = struct{}{}
 	}
 
-	skills, skillsKnown := countEnabledSkills(cwd, claudeDir, claudeSettingsPath, installedPluginsPath)
-	plugins, pluginsKnown := countEnabledPlugins(claudeSettingsPath, installedPluginsPath)
+	enabledPlugins, enabledPluginsKnown := enabledPluginNames(userSettings)
+	skills, skillsKnown := countEnabledSkills(cwd, claudeDir, enabledPlugins, enabledPluginsKnown, pluginIndex, pluginIndexKnown)
+	plugins, pluginsKnown := countEnabledPlugins(enabledPlugins, enabledPluginsKnown, pluginIndex, pluginIndexKnown)
 
 	return EnvironmentCounts{
 		MemoryFiles:  memoryFiles,
@@ -84,14 +109,13 @@ func CountEnvironment(cwd string) EnvironmentCounts {
 	}
 }
 
-func countEnabledSkills(cwd string, claudeDir string, settingsPath string, installedPluginsPath string) (int, bool) {
+func countEnabledSkills(cwd string, claudeDir string, enabledPlugins []string, enabledPluginsKnown bool, pluginIndex parsedPluginIndex, pluginIndexKnown bool) (int, bool) {
 	count := 0
 	count += countMarkdownFiles(filepath.Join(claudeDir, "skills"))
 	count += countMarkdownFiles(filepath.Join(cwd, ".claude", "skills"))
 
-	enabledPlugins, ok := readEnabledPlugins(settingsPath)
-	if ok {
-		count += countPluginCommands(enabledPlugins, installedPluginsPath)
+	if enabledPluginsKnown {
+		count += countPluginCommands(enabledPlugins, pluginIndex)
 		return count, true
 	}
 
@@ -99,41 +123,32 @@ func countEnabledSkills(cwd string, claudeDir string, settingsPath string, insta
 		return count, true
 	}
 
+	if pluginIndexKnown {
+		return 0, false
+	}
+
 	return 0, false
 }
 
-func countEnabledPlugins(settingsPath string, installedPluginsPath string) (int, bool) {
-	enabledPlugins, ok := readEnabledPlugins(settingsPath)
-	if ok {
+func countEnabledPlugins(enabledPlugins []string, enabledPluginsKnown bool, pluginIndex parsedPluginIndex, pluginIndexKnown bool) (int, bool) {
+	if enabledPluginsKnown {
 		return len(enabledPlugins), true
 	}
 
-	count, found := countInstalledPlugins(installedPluginsPath)
-	if found {
-		return count, true
+	if pluginIndexKnown {
+		return len(pluginIndex.Plugins), true
 	}
 
 	return 0, false
 }
 
-func readEnabledPlugins(path string) ([]string, bool) {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return nil, false
-	}
-
-	var parsed struct {
-		EnabledPlugins map[string]bool `json:"enabledPlugins"`
-	}
-	if err := json.Unmarshal(content, &parsed); err != nil {
-		return nil, false
-	}
-	if parsed.EnabledPlugins == nil {
+func enabledPluginNames(settings parsedSettings) ([]string, bool) {
+	if settings.EnabledPlugins == nil {
 		return nil, false
 	}
 
 	enabled := []string{}
-	for name, on := range parsed.EnabledPlugins {
+	for name, on := range settings.EnabledPlugins {
 		if on {
 			enabled = append(enabled, name)
 		}
@@ -142,27 +157,7 @@ func readEnabledPlugins(path string) ([]string, bool) {
 	return enabled, true
 }
 
-func countInstalledPlugins(path string) (int, bool) {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return 0, false
-	}
-
-	var parsed struct {
-		Plugins map[string]json.RawMessage `json:"plugins"`
-	}
-	if err := json.Unmarshal(content, &parsed); err != nil {
-		return 0, false
-	}
-	if parsed.Plugins == nil {
-		return 0, false
-	}
-
-	return len(parsed.Plugins), true
-}
-
-func countPluginCommands(enabledPlugins []string, installedPluginsPath string) int {
-	pluginIndex := loadPluginIndex(installedPluginsPath)
+func countPluginCommands(enabledPlugins []string, pluginIndex parsedPluginIndex) int {
 	count := 0
 	for _, plugin := range enabledPlugins {
 		manifestPath := findManifestInIndex(pluginIndex, plugin)
@@ -174,30 +169,8 @@ func countPluginCommands(enabledPlugins []string, installedPluginsPath string) i
 	return count
 }
 
-func loadPluginIndex(installedPluginsPath string) map[string][]struct {
-	InstallPath string `json:"installPath"`
-} {
-	content, err := os.ReadFile(installedPluginsPath)
-	if err != nil {
-		return nil
-	}
-
-	var parsed struct {
-		Plugins map[string][]struct {
-			InstallPath string `json:"installPath"`
-		} `json:"plugins"`
-	}
-	if err := json.Unmarshal(content, &parsed); err != nil {
-		return nil
-	}
-
-	return parsed.Plugins
-}
-
-func findManifestInIndex(index map[string][]struct {
-	InstallPath string `json:"installPath"`
-}, plugin string) string {
-	for _, install := range index[plugin] {
+func findManifestInIndex(index parsedPluginIndex, plugin string) string {
+	for _, install := range index.Plugins[plugin] {
 		manifestPath := filepath.Join(install.InstallPath, ".claude-plugin", "plugin.json")
 		if fileExists(manifestPath) {
 			return manifestPath
@@ -229,6 +202,55 @@ func countCommandsFromManifest(path string) int {
 	return count
 }
 
+func readSettingsFile(path string) parsedSettings {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return parsedSettings{}
+	}
+
+	var parsed parsedSettings
+	if err := json.Unmarshal(content, &parsed); err != nil {
+		return parsedSettings{}
+	}
+	return parsed
+}
+
+func readPluginIndex(path string) (parsedPluginIndex, bool) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return parsedPluginIndex{}, false
+	}
+
+	var parsed parsedPluginIndex
+	if err := json.Unmarshal(content, &parsed); err != nil {
+		return parsedPluginIndex{}, false
+	}
+	if parsed.Plugins == nil {
+		return parsedPluginIndex{}, false
+	}
+	return parsed, true
+}
+
+func namesFromRawMap(values map[string]json.RawMessage) map[string]struct{} {
+	result := map[string]struct{}{}
+	for name := range values {
+		result[name] = struct{}{}
+	}
+	return result
+}
+
+func valuesToNameSet(values []any) map[string]struct{} {
+	result := map[string]struct{}{}
+	for _, value := range values {
+		name, ok := value.(string)
+		if !ok {
+			continue
+		}
+		result[name] = struct{}{}
+	}
+	return result
+}
+
 func getMCPServerNames(path string) map[string]struct{} {
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -250,35 +272,14 @@ func getMCPServerNames(path string) map[string]struct{} {
 }
 
 func getDisabledMCPServers(path string, key disabledMcpKey) map[string]struct{} {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return map[string]struct{}{}
+	settings := readSettingsFile(path)
+	if key == disabledMcpServersKey {
+		return valuesToNameSet(settings.DisabledMCPServers)
 	}
-
-	var parsed map[string]json.RawMessage
-	if err := json.Unmarshal(content, &parsed); err != nil {
-		return map[string]struct{}{}
+	if key == disabledMcpJSONServersKey {
+		return valuesToNameSet(settings.DisabledMCPJSONServers)
 	}
-
-	raw, ok := parsed[string(key)]
-	if !ok {
-		return map[string]struct{}{}
-	}
-
-	var values []any
-	if err := json.Unmarshal(raw, &values); err != nil {
-		return map[string]struct{}{}
-	}
-
-	result := map[string]struct{}{}
-	for _, value := range values {
-		name, ok := value.(string)
-		if !ok {
-			continue
-		}
-		result[name] = struct{}{}
-	}
-	return result
+	return map[string]struct{}{}
 }
 
 func countMarkdownFiles(dir string) int {

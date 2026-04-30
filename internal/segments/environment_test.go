@@ -22,7 +22,7 @@ func TestEnvironmentSegmentFormattingWithoutPipes(t *testing.T) {
 	segment := EnvironmentSegment{Input: protocol.InputData{Workspace: protocol.Workspace{CurrentDir: workspace}}}
 
 	data := segment.Collect()
-	if data != nil && data.Primary != "" && data.Primary != "mem:0 mcp:0 skills:? plugins:?" {
+	if data != nil && data.Primary != "" && data.Primary != "0 mem · ? skills · 0 mcp · ? plugins" {
 		t.Fatalf("unexpected primary: %q", data.Primary)
 	}
 }

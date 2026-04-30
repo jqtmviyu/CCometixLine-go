@@ -48,7 +48,7 @@ func TestGenerateStatusLine(t *testing.T) {
 	items := segments.CollectAll(cfg, config.LoadModelConfig(), input)
 	result := StatusLineGenerator{Config: cfg}.Generate(items)
 
-	checks := []string{"Sonnet 4.5", "high", "CCometixLine-go", "0.8% · 1.6k tokens", "$0.02", "1m31s", "mem:", "mcp:", "skills:", "plugins:"}
+	checks := []string{"Sonnet 4.5", "high", "CCometixLine-go", "0.8% · 1.6k tokens", "$0.02", "1m31s", "mem", "skills", "mcp", "plugins"}
 	for _, check := range checks {
 		if !strings.Contains(result, check) {
 			t.Fatalf("expected result contain %q, got %q", check, result)
