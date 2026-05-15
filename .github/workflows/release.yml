@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to create or update, like v1.0.0
+        required: true
+        type: string
+      make_latest:
+        description: Mark release as latest
+        required: false
+        default: true
+        type: boolean
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Resolve release tag
+        id: vars
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+
+          if [ -z "$TAG" ]; then
+            echo "tag is required" >&2
+            exit 1
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Build release binaries
+        shell: bash
+        run: ./build.sh all
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          cd build
+          shasum -a 256 ccline_* > checksums.txt
+
+      - name: Create or update GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.vars.outputs.tag }}
+          MAKE_LATEST: ${{ github.event_name == 'workflow_dispatch' && inputs.make_latest || 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          latest_args=()
+          if [ "$MAKE_LATEST" = "true" ]; then
+            latest_args+=(--latest)
+          else
+            latest_args+=(--latest=false)
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" build/* --clobber
+          else
+            gh release create "$TAG" build/* \
+              --target "${GITHUB_SHA}" \
+              --title "$TAG" \
+              --generate-notes \
+              "${latest_args[@]}"
+          fi
