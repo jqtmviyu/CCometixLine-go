@@ -78,9 +78,9 @@ go test ./...
 ### environment
 
 - `mem` 统计 `CLAUDE.md / CLAUDE.local.md / rules/**/*.md`
-- `mcp` 参考 claude-hud 统计已开启配置
-- `skills` 优先统计已启用插件命令 + 本地 `skills/**/*.md`
-- `plugins` 统计已启用插件；拿不到时显示 `?`
+- `mcp` 统计 `~/.claude/settings.json`、`<cwd>/.claude/settings.json`、`<cwd>/.claude/settings.local.json` 里的 `enabledMcpjsonServers`；按名称去重
+- `skills` 统计 `~/.claude/skills` 与 `<cwd>/.claude/skills` 下的 skill 子目录名称总数；同名目录去重
+- `plugins` 统计 `~/.claude/settings.json`、`<cwd>/.claude/settings.json`、`<cwd>/.claude/settings.local.json` 里的 `enabledPlugins=true`；按名称去重
 
 ## 配置与默认行为
 

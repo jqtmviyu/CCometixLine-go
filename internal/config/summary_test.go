@@ -18,26 +18,16 @@ func TestCountEnvironmentCountsMemoryMCPPluginsAndSkills(t *testing.T) {
 	writeFile(t, filepath.Join(home, "CLAUDE.md"), "global")
 	writeFile(t, filepath.Join(home, "rules", "a.md"), "rule")
 	writeJSON(t, filepath.Join(home, "settings.json"), map[string]any{
-		"mcpServers": map[string]any{"user-a": map[string]any{}},
+		"enabledMcpjsonServers": []any{"user-a", "shared"},
 		"enabledPlugins": map[string]bool{
 			"plugin-a@test": true,
 			"plugin-b@test": false,
 		},
 	})
-	writeJSON(t, home+".json", map[string]any{
-		"mcpServers":         map[string]any{"user-b": map[string]any{}},
-		"disabledMcpServers": []any{"user-b"},
-	})
-	writeJSON(t, filepath.Join(home, "plugins", "installed_plugins.json"), map[string]any{
-		"version": 2,
-		"plugins": map[string]any{
-			"plugin-a@test": []map[string]any{{"installPath": filepath.Join(home, "plugins", "cache", "plugin-a")}},
-		},
-	})
-	writeJSON(t, filepath.Join(home, "plugins", "cache", "plugin-a", ".claude-plugin", "plugin.json"), map[string]any{
-		"commands": []string{"./commands/one.md", "./commands/two.md"},
-	})
-	writeFile(t, filepath.Join(home, "skills", "user.md"), "cmd")
+	writeJSON(t, home+".json", map[string]any{})
+	writeFile(t, filepath.Join(home, "skills", "ignored.md"), "cmd")
+	writeFile(t, filepath.Join(home, "skills", "user-skill", "skill.md"), "cmd")
+	writeFile(t, filepath.Join(home, "skills", "user-skill", "extra.md"), "cmd")
 
 	writeFile(t, filepath.Join(project, "CLAUDE.md"), "project")
 	writeFile(t, filepath.Join(project, "CLAUDE.local.md"), "project-local")
@@ -45,29 +35,29 @@ func TestCountEnvironmentCountsMemoryMCPPluginsAndSkills(t *testing.T) {
 	writeFile(t, filepath.Join(project, ".claude", "CLAUDE.local.md"), "project-claude-local")
 	writeFile(t, filepath.Join(project, ".claude", "rules", "b.md"), "rule")
 	writeJSON(t, filepath.Join(project, ".claude", "settings.json"), map[string]any{
-		"mcpServers": map[string]any{"project-a": map[string]any{}},
+		"enabledMcpjsonServers": []any{"project-a", "shared"},
+		"enabledPlugins":        map[string]bool{"plugin-c@test": true, "plugin-a@test": false},
 	})
 	writeJSON(t, filepath.Join(project, ".claude", "settings.local.json"), map[string]any{
-		"mcpServers":             map[string]any{"project-b": map[string]any{}},
-		"disabledMcpjsonServers": []any{"project-mcp"},
+		"enabledMcpjsonServers": []any{"project-b", "shared"},
+		"enabledPlugins":        map[string]bool{"plugin-d@test": true, "plugin-c@test": true},
 	})
-	writeJSON(t, filepath.Join(project, ".mcp.json"), map[string]any{
-		"mcpServers": map[string]any{"project-mcp": map[string]any{}, "project-extra": map[string]any{}},
-	})
-	writeFile(t, filepath.Join(project, ".claude", "skills", "project.md"), "cmd")
+	writeFile(t, filepath.Join(project, ".claude", "skills", "ignored.md"), "cmd")
+	writeFile(t, filepath.Join(project, ".claude", "skills", "user-skill", "duplicate.md"), "cmd")
+	writeFile(t, filepath.Join(project, ".claude", "skills", "project-skill", "skill.md"), "cmd")
 
 	counts := CountEnvironment(project)
 	if counts.MemoryFiles != 7 {
 		t.Fatalf("expected 7 memory files, got %d", counts.MemoryFiles)
 	}
 	if counts.MCPs != 4 {
-		t.Fatalf("expected 4 mcps, got %d", counts.MCPs)
+		t.Fatalf("expected deduplicated mcps=4, got %d", counts.MCPs)
 	}
-	if !counts.SkillsKnown || counts.Skills != 4 {
-		t.Fatalf("expected known skills=4, got known=%t value=%d", counts.SkillsKnown, counts.Skills)
+	if counts.Skills != 2 {
+		t.Fatalf("expected deduplicated skills=2, got %d", counts.Skills)
 	}
-	if !counts.PluginsKnown || counts.Plugins != 1 {
-		t.Fatalf("expected known plugins=1, got known=%t value=%d", counts.PluginsKnown, counts.Plugins)
+	if counts.Plugins != 3 {
+		t.Fatalf("expected deduplicated plugins=3, got %d", counts.Plugins)
 	}
 }
 
@@ -83,7 +73,7 @@ func TestCountEnvironmentAvoidsOverlappingClaudeDirDoubleCount(t *testing.T) {
 	}
 }
 
-func TestCountEnvironmentFallsBackToUnknownWhenPluginStateUnavailable(t *testing.T) {
+func TestCountEnvironmentSkillsDoNotDependOnPluginState(t *testing.T) {
 	home := t.TempDir()
 	project := filepath.Join(t.TempDir(), "project")
 	if err := os.MkdirAll(project, 0755); err != nil {
@@ -91,12 +81,21 @@ func TestCountEnvironmentFallsBackToUnknownWhenPluginStateUnavailable(t *testing
 	}
 	t.Setenv("CLAUDE_CONFIG_DIR", home)
 
+	writeFile(t, filepath.Join(home, "skills", "user-skill", "skill.md"), "cmd")
+	writeFile(t, filepath.Join(home, "skills", "root.md"), "cmd")
+	writeFile(t, filepath.Join(project, ".claude", "skills", "project-skill", "one.md"), "cmd")
+	writeFile(t, filepath.Join(project, ".claude", "skills", "project-skill", "two.md"), "cmd")
+	writeFile(t, filepath.Join(project, ".claude", "skills", "ignored.md"), "cmd")
+
 	counts := CountEnvironment(project)
-	if counts.SkillsKnown {
-		t.Fatalf("expected unknown skills")
+	if counts.Skills != 2 {
+		t.Fatalf("expected deduplicated skills=2, got %d", counts.Skills)
 	}
-	if counts.PluginsKnown {
-		t.Fatalf("expected unknown plugins")
+	if counts.MCPs != 0 {
+		t.Fatalf("expected mcps=0 when enabledMcpjsonServers missing, got %d", counts.MCPs)
+	}
+	if counts.Plugins != 0 {
+		t.Fatalf("expected plugins=0 when enabledPlugins missing, got %d", counts.Plugins)
 	}
 }
 
