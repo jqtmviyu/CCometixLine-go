@@ -99,6 +99,81 @@ func TestCountEnvironmentSkillsDoNotDependOnPluginState(t *testing.T) {
 	}
 }
 
+func TestConfiguredEffortLevelUsesUserSettings(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	writeJSON(t, filepath.Join(home, "settings.json"), map[string]any{"effortLevel": "low"})
+
+	level := ConfiguredEffortLevel(filepath.Join(t.TempDir(), "project"))
+	if level != "low" {
+		t.Fatalf("expected user effort low, got %q", level)
+	}
+}
+
+func TestConfiguredEffortLevelProjectOverridesUser(t *testing.T) {
+	home := t.TempDir()
+	project := filepath.Join(t.TempDir(), "project")
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	writeJSON(t, filepath.Join(home, "settings.json"), map[string]any{"effortLevel": "low"})
+	writeJSON(t, filepath.Join(project, ".claude", "settings.json"), map[string]any{"effortLevel": "high"})
+
+	level := ConfiguredEffortLevel(project)
+	if level != "high" {
+		t.Fatalf("expected project effort high, got %q", level)
+	}
+}
+
+func TestConfiguredEffortLevelLocalOverridesProject(t *testing.T) {
+	home := t.TempDir()
+	project := filepath.Join(t.TempDir(), "project")
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	writeJSON(t, filepath.Join(project, ".claude", "settings.json"), map[string]any{"effortLevel": "medium"})
+	writeJSON(t, filepath.Join(project, ".claude", "settings.local.json"), map[string]any{"effortLevel": "xhigh"})
+
+	level := ConfiguredEffortLevel(project)
+	if level != "xhigh" {
+		t.Fatalf("expected local effort xhigh, got %q", level)
+	}
+}
+
+func TestConfiguredEffortLevelIgnoresInvalidJSON(t *testing.T) {
+	home := t.TempDir()
+	project := filepath.Join(t.TempDir(), "project")
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	writeFile(t, filepath.Join(home, "settings.json"), "{")
+	writeJSON(t, filepath.Join(project, ".claude", "settings.json"), map[string]any{"effortLevel": "high"})
+
+	level := ConfiguredEffortLevel(project)
+	if level != "high" {
+		t.Fatalf("expected project effort high after invalid user json, got %q", level)
+	}
+}
+
+func TestConfiguredEffortLevelIgnoresWhitespace(t *testing.T) {
+	home := t.TempDir()
+	project := filepath.Join(t.TempDir(), "project")
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	writeJSON(t, filepath.Join(home, "settings.json"), map[string]any{"effortLevel": "   "})
+	writeJSON(t, filepath.Join(project, ".claude", "settings.json"), map[string]any{"effortLevel": "high"})
+
+	level := ConfiguredEffortLevel(project)
+	if level != "high" {
+		t.Fatalf("expected fallback project effort high, got %q", level)
+	}
+}
+
+func TestConfiguredEffortLevelAvoidsOverlappingClaudeDirDoubleRead(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	writeJSON(t, filepath.Join(home, "settings.json"), map[string]any{"effortLevel": "medium"})
+	writeJSON(t, filepath.Join(home, ".claude", "settings.local.json"), map[string]any{"effortLevel": "high"})
+
+	level := ConfiguredEffortLevel(home)
+	if level != "high" {
+		t.Fatalf("expected overlapping local effort high, got %q", level)
+	}
+}
+
 func writeFile(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {

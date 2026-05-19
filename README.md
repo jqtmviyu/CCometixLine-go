@@ -71,8 +71,11 @@ go test ./...
 
 ### effort
 
-- 读取输入 JSON `effort.level`
-- 已知值：`low`、`medium`、`high`、`xhigh`、`max`
+- 显示优先级：环境变量 `CLAUDE_CODE_EFFORT_LEVEL` > 设置文件 `effortLevel` > 实时输入 JSON `effort.level`
+- 设置文件依次读取：`~/.claude/settings.json`、`<cwd>/.claude/settings.json`、`<cwd>/.claude/settings.local.json`
+- 已知值：`auto`、`low`、`medium`、`high`、`xhigh`、`max`
+- 未知但格式合法的值显示为 `value?`
+- 非法值忽略，继续回退到更低优先级来源
 - 默认值：`auto`
 
 ### environment
@@ -86,6 +89,7 @@ go test ./...
 
 - 默认读取 `~/.claude/ccline/config.toml` 和 `~/.claude/ccline/models.toml`。
 - 如果设置了 `CLAUDE_CONFIG_DIR`，`config.toml` 和 `models.toml` 都切换到 `<CLAUDE_CONFIG_DIR>/ccline/`。
+- `effort` 读取用户级设置时也会跟随 `CLAUDE_CONFIG_DIR`，即用户设置文件位置变为 `<CLAUDE_CONFIG_DIR>/settings.json`。
 - 默认配置启用 `model`、`effort`、`directory`、`git`、`context_window`、`environment`。
 - 默认配置关闭 `cost`、`session`。
 

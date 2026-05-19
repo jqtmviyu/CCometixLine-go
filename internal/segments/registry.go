@@ -7,6 +7,7 @@ import (
 
 func CollectAll(cfg config.Config, modelConfig config.ModelConfig, input protocol.InputData) []CollectedSegment {
 	results := []CollectedSegment{}
+	settings := config.LoadSettingsSnapshot(input.Workspace.CurrentDir)
 
 	for _, segmentConfig := range cfg.Segments {
 		if !segmentConfig.Enabled {
@@ -18,7 +19,7 @@ func CollectAll(cfg config.Config, modelConfig config.ModelConfig, input protoco
 		case config.SegmentModel:
 			segment = ModelSegment{Input: input, ModelConfig: modelConfig}
 		case config.SegmentEffort:
-			segment = EffortSegment{Input: input}
+			segment = EffortSegment{Input: input, Settings: settings}
 		case config.SegmentDirectory:
 			segment = DirectorySegment{Input: input}
 		case config.SegmentGit:
@@ -30,7 +31,7 @@ func CollectAll(cfg config.Config, modelConfig config.ModelConfig, input protoco
 		case config.SegmentSession:
 			segment = SessionSegment{Input: input}
 		case config.SegmentEnvironment:
-			segment = EnvironmentSegment{Input: input}
+			segment = EnvironmentSegment{Input: input, Settings: settings}
 		default:
 			continue
 		}

@@ -14,38 +14,53 @@ type EnvironmentCounts struct {
 	Plugins     int
 }
 
+type SettingsSnapshot struct {
+	counts         EnvironmentCounts
+	configuredLevel string
+}
+
 type parsedSettings struct {
 	EnabledPlugins        map[string]bool `json:"enabledPlugins"`
 	EnabledMCPJSONServers []any           `json:"enabledMcpjsonServers"`
+	EffortLevel           string          `json:"effortLevel"`
 }
 
-func CountEnvironment(cwd string) EnvironmentCounts {
+func LoadSettingsSnapshot(cwd string) SettingsSnapshot {
 	claudeDir := ClaudeDir()
-	claudeSettingsPath := filepath.Join(claudeDir, "settings.json")
 	projectClaudeDir := filepath.Join(cwd, ".claude")
-	projectSettingsPath := filepath.Join(projectClaudeDir, "settings.json")
-	projectLocalSettingsPath := filepath.Join(projectClaudeDir, "settings.local.json")
 	projectOverlapsUser := samePath(projectClaudeDir, claudeDir)
-
-	userSettings := readSettings(claudeSettingsPath)
-	projectSettings := parsedSettings{}
-	if !projectOverlapsUser {
-		projectSettings = readSettings(projectSettingsPath)
-	}
-	projectLocalSettings := readSettings(projectLocalSettingsPath)
-	settingsList := collectEnvironmentSettings(userSettings, projectSettings, projectLocalSettings, projectOverlapsUser)
+	settingsList := collectSettingsList(claudeDir, projectClaudeDir, projectOverlapsUser)
 
 	memoryFiles := countMemoryFiles(claudeDir, cwd, projectClaudeDir, projectOverlapsUser)
 	mcpNames := collectMCPNames(settingsList)
 	pluginNames := collectPluginNames(settingsList)
 	skills := len(collectSkillNames(claudeDir, cwd))
 
-	return EnvironmentCounts{
-		MemoryFiles: memoryFiles,
-		MCPs:        len(mcpNames),
-		Skills:      skills,
-		Plugins:     len(pluginNames),
+	return SettingsSnapshot{
+		counts: EnvironmentCounts{
+			MemoryFiles: memoryFiles,
+			MCPs:        len(mcpNames),
+			Skills:      skills,
+			Plugins:     len(pluginNames),
+		},
+		configuredLevel: configuredEffortLevel(settingsList),
 	}
+}
+
+func CountEnvironment(cwd string) EnvironmentCounts {
+	return LoadSettingsSnapshot(cwd).EnvironmentCounts()
+}
+
+func ConfiguredEffortLevel(cwd string) string {
+	return LoadSettingsSnapshot(cwd).ConfiguredEffortLevel()
+}
+
+func (s SettingsSnapshot) EnvironmentCounts() EnvironmentCounts {
+	return s.counts
+}
+
+func (s SettingsSnapshot) ConfiguredEffortLevel() string {
+	return s.configuredLevel
 }
 
 func readSettings(path string) parsedSettings {
@@ -61,13 +76,28 @@ func readSettings(path string) parsedSettings {
 	return parsed
 }
 
-func collectEnvironmentSettings(userSettings parsedSettings, projectSettings parsedSettings, projectLocalSettings parsedSettings, projectOverlapsUser bool) []parsedSettings {
-	result := []parsedSettings{userSettings}
+func collectSettingsList(claudeDir string, projectClaudeDir string, projectOverlapsUser bool) []parsedSettings {
+	claudeSettingsPath := filepath.Join(claudeDir, "settings.json")
+	projectSettingsPath := filepath.Join(projectClaudeDir, "settings.json")
+	projectLocalSettingsPath := filepath.Join(projectClaudeDir, "settings.local.json")
+
+	result := []parsedSettings{readSettings(claudeSettingsPath)}
 	if !projectOverlapsUser {
-		result = append(result, projectSettings)
+		result = append(result, readSettings(projectSettingsPath))
 	}
-	result = append(result, projectLocalSettings)
+	result = append(result, readSettings(projectLocalSettingsPath))
 	return result
+}
+
+func configuredEffortLevel(settingsList []parsedSettings) string {
+	for i := len(settingsList) - 1; i >= 0; i-- {
+		value := strings.TrimSpace(settingsList[i].EffortLevel)
+		if value != "" {
+			return value
+		}
+	}
+
+	return ""
 }
 
 func countMemoryFiles(claudeDir string, cwd string, projectClaudeDir string, projectOverlapsUser bool) int {

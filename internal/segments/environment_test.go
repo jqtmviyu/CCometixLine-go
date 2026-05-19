@@ -5,12 +5,14 @@ import (
 	"path/filepath"
 	"testing"
 
+	"ccometixline-go/internal/config"
 	"ccometixline-go/internal/protocol"
 )
 
 func TestEnvironmentSegmentCollectReturnsNilForEmptyEnvironment(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
-	segment := EnvironmentSegment{Input: protocol.InputData{Workspace: protocol.Workspace{CurrentDir: t.TempDir()}}}
+	workspace := t.TempDir()
+	segment := EnvironmentSegment{Input: protocol.InputData{Workspace: protocol.Workspace{CurrentDir: workspace}}, Settings: config.LoadSettingsSnapshot(workspace)}
 
 	data := segment.Collect()
 	if data != nil {
@@ -22,7 +24,7 @@ func TestEnvironmentSegmentFormattingWithoutPipes(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	workspace := t.TempDir()
 	writeEnvTestFile(t, filepath.Join(workspace, ".claude", "skills", "demo", "skill.md"), "cmd")
-	segment := EnvironmentSegment{Input: protocol.InputData{Workspace: protocol.Workspace{CurrentDir: workspace}}}
+	segment := EnvironmentSegment{Input: protocol.InputData{Workspace: protocol.Workspace{CurrentDir: workspace}}, Settings: config.LoadSettingsSnapshot(workspace)}
 
 	data := segment.Collect()
 	if data == nil || data.Primary != "0 mem · 1 skills · 0 mcp · 0 plugins" {

@@ -1,13 +1,17 @@
 package segments
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
+	"ccometixline-go/internal/config"
 	"ccometixline-go/internal/protocol"
 )
 
 func TestEffortSegmentCollectFromPayload(t *testing.T) {
-	segment := EffortSegment{Input: protocol.InputData{Effort: &protocol.Effort{Level: "HIGH"}}}
+	segment := EffortSegment{Input: protocol.InputData{Effort: &protocol.Effort{Level: "HIGH"}}, Settings: config.LoadSettingsSnapshot("")}
 
 	data := segment.Collect()
 	if data == nil {
@@ -19,7 +23,7 @@ func TestEffortSegmentCollectFromPayload(t *testing.T) {
 }
 
 func TestEffortSegmentCollectUnknownPayload(t *testing.T) {
-	segment := EffortSegment{Input: protocol.InputData{Effort: &protocol.Effort{Level: "super-max"}}}
+	segment := EffortSegment{Input: protocol.InputData{Effort: &protocol.Effort{Level: "super-max"}}, Settings: config.LoadSettingsSnapshot("")}
 
 	data := segment.Collect()
 	if data == nil {
@@ -31,7 +35,7 @@ func TestEffortSegmentCollectUnknownPayload(t *testing.T) {
 }
 
 func TestEffortSegmentCollectDefault(t *testing.T) {
-	segment := EffortSegment{Input: protocol.InputData{Effort: &protocol.Effort{Level: "@@"}}}
+	segment := EffortSegment{Input: protocol.InputData{Effort: &protocol.Effort{Level: "@@"}}, Settings: config.LoadSettingsSnapshot("")}
 
 	data := segment.Collect()
 	if data == nil {
@@ -42,16 +46,173 @@ func TestEffortSegmentCollectDefault(t *testing.T) {
 	}
 }
 
-func TestResolveEffortUsesPayloadOnly(t *testing.T) {
-	effort := resolveEffort(protocol.InputData{Effort: &protocol.Effort{Level: "high"}})
+func TestResolveEffortUsesPayloadWhenNoOverridesExist(t *testing.T) {
+	input := protocol.InputData{Effort: &protocol.Effort{Level: "high"}}
+
+	effort := resolveEffort(input, config.LoadSettingsSnapshot(input.Workspace.CurrentDir))
 	if effort != "high" {
 		t.Fatalf("expected payload effort high, got %q", effort)
 	}
 }
 
-func TestResolveEffortMissingPayloadFallsBackToDefault(t *testing.T) {
-	effort := resolveEffort(protocol.InputData{})
+func TestResolveEffortEnvironmentOverridesSettingsAndPayload(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_EFFORT_LEVEL", "high")
+	home := t.TempDir()
+	project := filepath.Join(t.TempDir(), "project")
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	writeJSONFile(t, filepath.Join(home, "settings.json"), map[string]any{"effortLevel": "low"})
+	writeJSONFile(t, filepath.Join(project, ".claude", "settings.json"), map[string]any{"effortLevel": "medium"})
+
+	input := protocol.InputData{
+		Workspace: protocol.Workspace{CurrentDir: project},
+		Effort:    &protocol.Effort{Level: "xhigh"},
+	}
+
+	effort := resolveEffort(input, config.LoadSettingsSnapshot(input.Workspace.CurrentDir))
+	if effort != "high" {
+		t.Fatalf("expected env effort high, got %q", effort)
+	}
+}
+
+func TestResolveEffortSettingsOverridePayload(t *testing.T) {
+	home := t.TempDir()
+	project := filepath.Join(t.TempDir(), "project")
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	writeJSONFile(t, filepath.Join(project, ".claude", "settings.json"), map[string]any{"effortLevel": "xhigh"})
+
+	input := protocol.InputData{
+		Workspace: protocol.Workspace{CurrentDir: project},
+		Effort:    &protocol.Effort{Level: "medium"},
+	}
+
+	effort := resolveEffort(input, config.LoadSettingsSnapshot(input.Workspace.CurrentDir))
+	if effort != "xhigh" {
+		t.Fatalf("expected settings effort xhigh, got %q", effort)
+	}
+}
+
+func TestResolveEffortProjectLocalOverridesProjectSettings(t *testing.T) {
+	home := t.TempDir()
+	project := filepath.Join(t.TempDir(), "project")
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	writeJSONFile(t, filepath.Join(project, ".claude", "settings.json"), map[string]any{"effortLevel": "medium"})
+	writeJSONFile(t, filepath.Join(project, ".claude", "settings.local.json"), map[string]any{"effortLevel": "high"})
+
+	input := protocol.InputData{Workspace: protocol.Workspace{CurrentDir: project}}
+	effort := resolveEffort(input, config.LoadSettingsSnapshot(input.Workspace.CurrentDir))
+	if effort != "high" {
+		t.Fatalf("expected local settings effort high, got %q", effort)
+	}
+}
+
+func TestResolveEffortProjectSettingsOverrideUserSettings(t *testing.T) {
+	home := t.TempDir()
+	project := filepath.Join(t.TempDir(), "project")
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	writeJSONFile(t, filepath.Join(home, "settings.json"), map[string]any{"effortLevel": "low"})
+	writeJSONFile(t, filepath.Join(project, ".claude", "settings.json"), map[string]any{"effortLevel": "high"})
+
+	input := protocol.InputData{Workspace: protocol.Workspace{CurrentDir: project}}
+	effort := resolveEffort(input, config.LoadSettingsSnapshot(input.Workspace.CurrentDir))
+	if effort != "high" {
+		t.Fatalf("expected project settings effort high, got %q", effort)
+	}
+}
+
+func TestResolveEffortAutoStopsFallbackFromEnvironment(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_EFFORT_LEVEL", "auto")
+	home := t.TempDir()
+	project := filepath.Join(t.TempDir(), "project")
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	writeJSONFile(t, filepath.Join(project, ".claude", "settings.json"), map[string]any{"effortLevel": "high"})
+
+	segment := EffortSegment{Input: protocol.InputData{
+		Workspace: protocol.Workspace{CurrentDir: project},
+		Effort:    &protocol.Effort{Level: "max"},
+	}, Settings: config.LoadSettingsSnapshot(project)}
+	data := segment.Collect()
+	if data.Primary != "auto" {
+		t.Fatalf("expected env auto, got %q", data.Primary)
+	}
+}
+
+func TestResolveEffortAutoStopsFallbackFromSettings(t *testing.T) {
+	home := t.TempDir()
+	project := filepath.Join(t.TempDir(), "project")
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	writeJSONFile(t, filepath.Join(project, ".claude", "settings.json"), map[string]any{"effortLevel": "auto"})
+
+	segment := EffortSegment{Input: protocol.InputData{
+		Workspace: protocol.Workspace{CurrentDir: project},
+		Effort:    &protocol.Effort{Level: "high"},
+	}, Settings: config.LoadSettingsSnapshot(project)}
+	data := segment.Collect()
+	if data.Primary != "auto" {
+		t.Fatalf("expected settings auto, got %q", data.Primary)
+	}
+}
+
+func TestResolveEffortInvalidEnvironmentFallsBackToSettings(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_EFFORT_LEVEL", "@@")
+	home := t.TempDir()
+	project := filepath.Join(t.TempDir(), "project")
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	writeJSONFile(t, filepath.Join(project, ".claude", "settings.json"), map[string]any{"effortLevel": "high"})
+
+	input := protocol.InputData{
+		Workspace: protocol.Workspace{CurrentDir: project},
+		Effort:    &protocol.Effort{Level: "low"},
+	}
+
+	effort := resolveEffort(input, config.LoadSettingsSnapshot(input.Workspace.CurrentDir))
+	if effort != "high" {
+		t.Fatalf("expected fallback settings effort high, got %q", effort)
+	}
+}
+
+func TestResolveEffortInvalidSettingsFallBackToPayload(t *testing.T) {
+	home := t.TempDir()
+	project := filepath.Join(t.TempDir(), "project")
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	writeJSONFile(t, filepath.Join(project, ".claude", "settings.json"), map[string]any{"effortLevel": "@@"})
+
+	input := protocol.InputData{
+		Workspace: protocol.Workspace{CurrentDir: project},
+		Effort:    &protocol.Effort{Level: "medium"},
+	}
+
+	effort := resolveEffort(input, config.LoadSettingsSnapshot(input.Workspace.CurrentDir))
+	if effort != "medium" {
+		t.Fatalf("expected fallback payload effort medium, got %q", effort)
+	}
+}
+
+func TestResolveEffortUnknownValidEnvironmentValue(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_EFFORT_LEVEL", "super-max")
+
+	effort := resolveEffort(protocol.InputData{}, config.LoadSettingsSnapshot(""))
+	if effort != "super-max?" {
+		t.Fatalf("expected unknown env effort with question mark, got %q", effort)
+	}
+}
+
+func TestResolveEffortMissingAllSourcesFallsBackToDefault(t *testing.T) {
+	effort := resolveEffort(protocol.InputData{}, config.LoadSettingsSnapshot(""))
 	if effort != "" {
 		t.Fatalf("expected default effort, got %q", effort)
+	}
+}
+
+func writeJSONFile(t *testing.T, path string, value any) {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
 	}
 }

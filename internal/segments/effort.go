@@ -1,9 +1,11 @@
 package segments
 
 import (
+	"os"
 	"regexp"
 	"strings"
 
+	"ccometixline-go/internal/config"
 	"ccometixline-go/internal/protocol"
 )
 
@@ -18,11 +20,12 @@ var knownEfforts = map[string]bool{
 var unknownEffortPattern = regexp.MustCompile(`^[a-z0-9-]{2,20}$`)
 
 type EffortSegment struct {
-	Input protocol.InputData
+	Input    protocol.InputData
+	Settings config.SettingsSnapshot
 }
 
 func (s EffortSegment) Collect() *SegmentData {
-	effort := formatEffort(resolveEffort(s.Input))
+	effort := formatEffort(resolveEffort(s.Input, s.Settings))
 
 	return &SegmentData{
 		Primary:   effort,
@@ -33,12 +36,31 @@ func (s EffortSegment) Collect() *SegmentData {
 	}
 }
 
-func resolveEffort(input protocol.InputData) string {
+func resolveEffort(input protocol.InputData, settings config.SettingsSnapshot) string {
+	effort, ok := normalizeEffort(os.Getenv("CLAUDE_CODE_EFFORT_LEVEL"))
+	if ok {
+		return effort
+	}
+
+	effort, ok = normalizeEffort(settings.ConfiguredEffortLevel())
+	if ok {
+		return effort
+	}
+
+	effort, ok = normalizeEffort(payloadEffort(input))
+	if ok {
+		return effort
+	}
+
+	return ""
+}
+
+func payloadEffort(input protocol.InputData) string {
 	if input.Effort == nil {
 		return ""
 	}
-	effort, _ := normalizeEffort(input.Effort.Level)
-	return effort
+
+	return input.Effort.Level
 }
 
 func normalizeEffort(value string) (string, bool) {

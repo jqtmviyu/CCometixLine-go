@@ -8,11 +8,12 @@ import (
 )
 
 type EnvironmentSegment struct {
-	Input protocol.InputData
+	Input    protocol.InputData
+	Settings config.SettingsSnapshot
 }
 
 func (s EnvironmentSegment) Collect() *SegmentData {
-	counts := config.CountEnvironment(s.Input.Workspace.CurrentDir)
+	counts := s.Settings.EnvironmentCounts()
 	if counts.MemoryFiles == 0 && counts.MCPs == 0 && counts.Skills == 0 && counts.Plugins == 0 {
 		return nil
 	}
