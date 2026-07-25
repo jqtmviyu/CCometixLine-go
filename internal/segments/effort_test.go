@@ -11,7 +11,8 @@ import (
 )
 
 func TestEffortSegmentCollectFromPayload(t *testing.T) {
-	segment := EffortSegment{Input: protocol.InputData{Effort: &protocol.Effort{Level: "HIGH"}}, Settings: config.LoadSettingsSnapshot("")}
+	t.Setenv("CLAUDE_CODE_EFFORT_LEVEL", "")
+	segment := EffortSegment{Input: protocol.InputData{Effort: &protocol.Effort{Level: "HIGH"}}, Settings: config.LoadSettingsSnapshot(t.TempDir())}
 
 	data := segment.Collect()
 	if data == nil {
@@ -23,7 +24,8 @@ func TestEffortSegmentCollectFromPayload(t *testing.T) {
 }
 
 func TestEffortSegmentCollectUnknownPayload(t *testing.T) {
-	segment := EffortSegment{Input: protocol.InputData{Effort: &protocol.Effort{Level: "super-max"}}, Settings: config.LoadSettingsSnapshot("")}
+	t.Setenv("CLAUDE_CODE_EFFORT_LEVEL", "")
+	segment := EffortSegment{Input: protocol.InputData{Effort: &protocol.Effort{Level: "super-max"}}, Settings: config.LoadSettingsSnapshot(t.TempDir())}
 
 	data := segment.Collect()
 	if data == nil {
@@ -35,7 +37,9 @@ func TestEffortSegmentCollectUnknownPayload(t *testing.T) {
 }
 
 func TestEffortSegmentCollectDefault(t *testing.T) {
-	segment := EffortSegment{Input: protocol.InputData{Effort: &protocol.Effort{Level: "@@"}}, Settings: config.LoadSettingsSnapshot("")}
+	t.Setenv("CLAUDE_CODE_EFFORT_LEVEL", "")
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	segment := EffortSegment{Input: protocol.InputData{Effort: &protocol.Effort{Level: "@@"}}, Settings: config.LoadSettingsSnapshot(t.TempDir())}
 
 	data := segment.Collect()
 	if data == nil {
@@ -47,15 +51,16 @@ func TestEffortSegmentCollectDefault(t *testing.T) {
 }
 
 func TestResolveEffortUsesPayloadWhenNoOverridesExist(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_EFFORT_LEVEL", "")
 	input := protocol.InputData{Effort: &protocol.Effort{Level: "high"}}
 
-	effort := resolveEffort(input, config.LoadSettingsSnapshot(input.Workspace.CurrentDir))
+	effort := resolveEffort(input, config.LoadSettingsSnapshot(t.TempDir()))
 	if effort != "high" {
 		t.Fatalf("expected payload effort high, got %q", effort)
 	}
 }
 
-func TestResolveEffortEnvironmentOverridesSettingsAndPayload(t *testing.T) {
+func TestResolveEffortEnvironmentOverridesPayloadAndSettings(t *testing.T) {
 	t.Setenv("CLAUDE_CODE_EFFORT_LEVEL", "high")
 	home := t.TempDir()
 	project := filepath.Join(t.TempDir(), "project")
@@ -74,7 +79,7 @@ func TestResolveEffortEnvironmentOverridesSettingsAndPayload(t *testing.T) {
 	}
 }
 
-func TestResolveEffortSettingsOverridePayload(t *testing.T) {
+func TestResolveEffortPayloadOverridesSettings(t *testing.T) {
 	home := t.TempDir()
 	project := filepath.Join(t.TempDir(), "project")
 	t.Setenv("CLAUDE_CONFIG_DIR", home)
@@ -86,8 +91,8 @@ func TestResolveEffortSettingsOverridePayload(t *testing.T) {
 	}
 
 	effort := resolveEffort(input, config.LoadSettingsSnapshot(input.Workspace.CurrentDir))
-	if effort != "xhigh" {
-		t.Fatalf("expected settings effort xhigh, got %q", effort)
+	if effort != "medium" {
+		t.Fatalf("expected payload effort medium, got %q", effort)
 	}
 }
 
@@ -119,7 +124,7 @@ func TestResolveEffortProjectSettingsOverrideUserSettings(t *testing.T) {
 	}
 }
 
-func TestResolveEffortAutoStopsFallbackFromEnvironment(t *testing.T) {
+func TestResolveEffortAutoEnvironmentStopsFallback(t *testing.T) {
 	t.Setenv("CLAUDE_CODE_EFFORT_LEVEL", "auto")
 	home := t.TempDir()
 	project := filepath.Join(t.TempDir(), "project")
@@ -136,7 +141,7 @@ func TestResolveEffortAutoStopsFallbackFromEnvironment(t *testing.T) {
 	}
 }
 
-func TestResolveEffortAutoStopsFallbackFromSettings(t *testing.T) {
+func TestResolveEffortPayloadOverridesAutoSettings(t *testing.T) {
 	home := t.TempDir()
 	project := filepath.Join(t.TempDir(), "project")
 	t.Setenv("CLAUDE_CONFIG_DIR", home)
@@ -147,12 +152,12 @@ func TestResolveEffortAutoStopsFallbackFromSettings(t *testing.T) {
 		Effort:    &protocol.Effort{Level: "high"},
 	}, Settings: config.LoadSettingsSnapshot(project)}
 	data := segment.Collect()
-	if data.Primary != "auto" {
-		t.Fatalf("expected settings auto, got %q", data.Primary)
+	if data.Primary != "high" {
+		t.Fatalf("expected payload high, got %q", data.Primary)
 	}
 }
 
-func TestResolveEffortInvalidEnvironmentFallsBackToSettings(t *testing.T) {
+func TestResolveEffortPayloadWhenEnvironmentInvalid(t *testing.T) {
 	t.Setenv("CLAUDE_CODE_EFFORT_LEVEL", "@@")
 	home := t.TempDir()
 	project := filepath.Join(t.TempDir(), "project")
@@ -165,12 +170,12 @@ func TestResolveEffortInvalidEnvironmentFallsBackToSettings(t *testing.T) {
 	}
 
 	effort := resolveEffort(input, config.LoadSettingsSnapshot(input.Workspace.CurrentDir))
-	if effort != "high" {
-		t.Fatalf("expected fallback settings effort high, got %q", effort)
+	if effort != "low" {
+		t.Fatalf("expected payload effort low, got %q", effort)
 	}
 }
 
-func TestResolveEffortInvalidSettingsFallBackToPayload(t *testing.T) {
+func TestResolveEffortPayloadWithInvalidSettings(t *testing.T) {
 	home := t.TempDir()
 	project := filepath.Join(t.TempDir(), "project")
 	t.Setenv("CLAUDE_CONFIG_DIR", home)
@@ -187,17 +192,53 @@ func TestResolveEffortInvalidSettingsFallBackToPayload(t *testing.T) {
 	}
 }
 
+func TestResolveEffortEnvironmentOverridesAutoPayload(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_EFFORT_LEVEL", "high")
+	home := t.TempDir()
+	project := filepath.Join(t.TempDir(), "project")
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	writeJSONFile(t, filepath.Join(project, ".claude", "settings.json"), map[string]any{"effortLevel": "medium"})
+
+	segment := EffortSegment{Input: protocol.InputData{
+		Workspace: protocol.Workspace{CurrentDir: project},
+		Effort:    &protocol.Effort{Level: "auto"},
+	}, Settings: config.LoadSettingsSnapshot(project)}
+	data := segment.Collect()
+	if data.Primary != "high" {
+		t.Fatalf("expected env high, got %q", data.Primary)
+	}
+}
+
+func TestResolveEffortEnvironmentAutoStopsFallbackToSettings(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_EFFORT_LEVEL", "auto")
+	home := t.TempDir()
+	project := filepath.Join(t.TempDir(), "project")
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	writeJSONFile(t, filepath.Join(project, ".claude", "settings.json"), map[string]any{"effortLevel": "high"})
+
+	segment := EffortSegment{Input: protocol.InputData{
+		Workspace: protocol.Workspace{CurrentDir: project},
+		Effort:    nil,
+	}, Settings: config.LoadSettingsSnapshot(project)}
+	data := segment.Collect()
+	if data.Primary != "auto" {
+		t.Fatalf("expected env auto, got %q", data.Primary)
+	}
+}
+
 func TestResolveEffortUnknownValidEnvironmentValue(t *testing.T) {
 	t.Setenv("CLAUDE_CODE_EFFORT_LEVEL", "super-max")
 
-	effort := resolveEffort(protocol.InputData{}, config.LoadSettingsSnapshot(""))
+	effort := resolveEffort(protocol.InputData{}, config.LoadSettingsSnapshot(t.TempDir()))
 	if effort != "super-max?" {
 		t.Fatalf("expected unknown env effort with question mark, got %q", effort)
 	}
 }
 
 func TestResolveEffortMissingAllSourcesFallsBackToDefault(t *testing.T) {
-	effort := resolveEffort(protocol.InputData{}, config.LoadSettingsSnapshot(""))
+	t.Setenv("CLAUDE_CODE_EFFORT_LEVEL", "")
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	effort := resolveEffort(protocol.InputData{}, config.LoadSettingsSnapshot(t.TempDir()))
 	if effort != "" {
 		t.Fatalf("expected default effort, got %q", effort)
 	}

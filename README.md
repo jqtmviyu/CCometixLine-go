@@ -71,7 +71,7 @@ go test ./...
 
 ### effort
 
-- 显示优先级：环境变量 `CLAUDE_CODE_EFFORT_LEVEL` > 设置文件 `effortLevel` > 实时输入 JSON `effort.level`
+- 显示优先级：环境变量 `CLAUDE_CODE_EFFORT_LEVEL` > 实时输入 JSON `effort.level` > 设置文件 `effortLevel`
 - 设置文件依次读取：`~/.claude/settings.json`、`<cwd>/.claude/settings.json`、`<cwd>/.claude/settings.local.json`
 - 已知值：`auto`、`low`、`medium`、`high`、`xhigh`、`max`
 - 未知但格式合法的值显示为 `value?`

@@ -42,12 +42,12 @@ func resolveEffort(input protocol.InputData, settings config.SettingsSnapshot) s
 		return effort
 	}
 
-	effort, ok = normalizeEffort(settings.ConfiguredEffortLevel())
+	effort, ok = normalizeEffort(payloadEffort(input))
 	if ok {
 		return effort
 	}
 
-	effort, ok = normalizeEffort(payloadEffort(input))
+	effort, ok = normalizeEffort(settings.ConfiguredEffortLevel())
 	if ok {
 		return effort
 	}
