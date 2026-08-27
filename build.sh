@@ -91,6 +91,15 @@ case "$1" in
 "darwin-universal")
   build_darwin_universal
   ;;
+"linux-amd64")
+  build linux amd64
+  ;;
+"linux-386")
+  build linux 386
+  ;;
+"linux-arm64")
+  build linux arm64
+  ;;
 "windows-amd64")
   build windows amd64
   ;;
@@ -102,6 +111,9 @@ case "$1" in
   build darwin amd64
   build darwin arm64
   build_darwin_universal
+  build linux amd64
+  build linux 386
+  build linux arm64
   build windows amd64
   build windows arm64
   ;;
@@ -111,11 +123,14 @@ case "$1" in
   exit 0
   ;;
 *)
-  echo "用法: $0 {darwin-amd64|darwin-arm64|darwin-universal|windows-amd64|windows-arm64|all|clean}"
+  echo "用法: $0 {darwin-amd64|darwin-arm64|darwin-universal|linux-amd64|linux-386|linux-arm64|windows-amd64|windows-arm64|all|clean}"
   echo "示例:"
   echo "  $0 darwin-amd64      # 仅编译 macOS AMD64 版本"
   echo "  $0 darwin-arm64      # 仅编译 macOS ARM64 版本"
   echo "  $0 darwin-universal  # 编译 macOS Universal 版本"
+  echo "  $0 linux-amd64       # 仅编译 Linux X64 版本"
+  echo "  $0 linux-386         # 仅编译 Linux X86 版本"
+  echo "  $0 linux-arm64       # 仅编译 Linux ARM64 版本"
   echo "  $0 windows-amd64     # 仅编译 Windows AMD64 版本"
   echo "  $0 windows-arm64     # 仅编译 Windows ARM64 版本"
   echo "  $0 all               # 编译所有版本"
