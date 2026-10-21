@@ -82,7 +82,8 @@ go test ./...
 
 - `mem` 统计 `CLAUDE.md / CLAUDE.local.md / rules/**/*.md`
 - `mcp` 统计 `~/.claude/settings.json`、`<cwd>/.claude/settings.json`、`<cwd>/.claude/settings.local.json` 里的 `enabledMcpjsonServers`；按名称去重
-- `skills` 统计 `~/.claude/skills` 与 `<cwd>/.claude/skills` 下的 skill 子目录名称总数；同名目录去重
+- `skills` 统计 `~/.claude/skills/*/SKILL.md` 与 `<cwd>/.claude/skills/*/SKILL.md`；过滤 YAML 头部中 `disable-model-invocation: true` 的项，按子目录名称去重。只读取头部，正文不参与判断。
+- skill 子目录支持指向目录的软链接，适用于共享安装的 skills。
 - `plugins` 统计 `~/.claude/settings.json`、`<cwd>/.claude/settings.json`、`<cwd>/.claude/settings.local.json` 里的 `enabledPlugins=true`；按名称去重
 
 ## 配置与默认行为
@@ -92,6 +93,8 @@ go test ./...
 - `effort` 读取用户级设置时也会跟随 `CLAUDE_CONFIG_DIR`，即用户设置文件位置变为 `<CLAUDE_CONFIG_DIR>/settings.json`。
 - 默认配置启用 `model`、`effort`、`directory`、`git`、`context_window`、`environment`。
 - 默认配置关闭 `cost`、`session`。
+- `⚡️` 前面的内容超过 80 个终端显示列时，从 `⚡️` 开始换行，后面的 `🛠️` 跟随到第二行。中文和 emoji 按显示宽度计算，ANSI 颜色码不占宽度。
+- 在 `config.toml` 的 `[style]` 下设置 `wrap_width = 60` 可调整阈值；设为 `-1` 关闭自动换行。
 
 ## 接入 Claude Code
 

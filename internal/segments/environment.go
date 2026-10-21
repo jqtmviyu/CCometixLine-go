@@ -22,7 +22,7 @@ func (s EnvironmentSegment) Collect() *SegmentData {
 	pluginsValue := fmt.Sprintf("%d", counts.Plugins)
 
 	return &SegmentData{
-		Primary: fmt.Sprintf("%d mem · %s skills · %d mcp · %s plugins", counts.MemoryFiles, skillsValue, counts.MCPs, pluginsValue),
+		Primary: fmt.Sprintf("mem:%d sk:%s mcp:%d plg:%s", counts.MemoryFiles, skillsValue, counts.MCPs, pluginsValue),
 		Metadata: map[string]string{
 			"memory_files": fmt.Sprintf("%d", counts.MemoryFiles),
 			"skills":       skillsValue,

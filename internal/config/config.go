@@ -16,6 +16,7 @@ type Config struct {
 type StyleConfig struct {
 	Mode      StyleMode `toml:"mode"`
 	Separator string    `toml:"separator"`
+	WrapWidth int       `toml:"wrap_width"`
 }
 
 type StyleMode string
@@ -102,6 +103,7 @@ func DefaultConfig() Config {
 		Style: StyleConfig{
 			Mode:      StyleModePlain,
 			Separator: " | ",
+			WrapWidth: 80,
 		},
 		Segments: buildDefaultSegments(),
 		Theme:    "default",
@@ -151,6 +153,9 @@ func IntOption(options map[string]any, key string, fallback int) int {
 }
 
 func applyConfigDefaults(cfg *Config) {
+	if cfg.Style.WrapWidth == 0 {
+		cfg.Style.WrapWidth = 80
+	}
 	if cfg.Style.Mode == "" {
 		cfg.Style.Mode = StyleModePlain
 	}

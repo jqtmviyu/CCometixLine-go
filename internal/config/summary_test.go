@@ -26,7 +26,7 @@ func TestCountEnvironmentCountsMemoryMCPPluginsAndSkills(t *testing.T) {
 	})
 	writeJSON(t, home+".json", map[string]any{})
 	writeFile(t, filepath.Join(home, "skills", "ignored.md"), "cmd")
-	writeFile(t, filepath.Join(home, "skills", "user-skill", "skill.md"), "cmd")
+	writeFile(t, filepath.Join(home, "skills", "user-skill", "SKILL.md"), "cmd")
 	writeFile(t, filepath.Join(home, "skills", "user-skill", "extra.md"), "cmd")
 
 	writeFile(t, filepath.Join(project, "CLAUDE.md"), "project")
@@ -43,8 +43,8 @@ func TestCountEnvironmentCountsMemoryMCPPluginsAndSkills(t *testing.T) {
 		"enabledPlugins":        map[string]bool{"plugin-d@test": true, "plugin-c@test": true},
 	})
 	writeFile(t, filepath.Join(project, ".claude", "skills", "ignored.md"), "cmd")
-	writeFile(t, filepath.Join(project, ".claude", "skills", "user-skill", "duplicate.md"), "cmd")
-	writeFile(t, filepath.Join(project, ".claude", "skills", "project-skill", "skill.md"), "cmd")
+	writeFile(t, filepath.Join(project, ".claude", "skills", "user-skill", "SKILL.md"), "cmd")
+	writeFile(t, filepath.Join(project, ".claude", "skills", "project-skill", "SKILL.md"), "cmd")
 
 	counts := CountEnvironment(project)
 	if counts.MemoryFiles != 7 {
@@ -81,9 +81,9 @@ func TestCountEnvironmentSkillsDoNotDependOnPluginState(t *testing.T) {
 	}
 	t.Setenv("CLAUDE_CONFIG_DIR", home)
 
-	writeFile(t, filepath.Join(home, "skills", "user-skill", "skill.md"), "cmd")
+	writeFile(t, filepath.Join(home, "skills", "user-skill", "SKILL.md"), "cmd")
 	writeFile(t, filepath.Join(home, "skills", "root.md"), "cmd")
-	writeFile(t, filepath.Join(project, ".claude", "skills", "project-skill", "one.md"), "cmd")
+	writeFile(t, filepath.Join(project, ".claude", "skills", "project-skill", "SKILL.md"), "cmd")
 	writeFile(t, filepath.Join(project, ".claude", "skills", "project-skill", "two.md"), "cmd")
 	writeFile(t, filepath.Join(project, ".claude", "skills", "ignored.md"), "cmd")
 
@@ -96,6 +96,43 @@ func TestCountEnvironmentSkillsDoNotDependOnPluginState(t *testing.T) {
 	}
 	if counts.Plugins != 0 {
 		t.Fatalf("expected plugins=0 when enabledPlugins missing, got %d", counts.Plugins)
+	}
+}
+
+func TestCountEnvironmentIncludesSymlinkedUserSkill(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	target := t.TempDir()
+	writeFile(t, filepath.Join(target, "SKILL.md"), "skill")
+	if err := os.MkdirAll(filepath.Join(home, "skills"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(home, "skills", "linked-skill")); err != nil {
+		t.Fatal(err)
+	}
+	if counts := CountEnvironment(t.TempDir()); counts.Skills != 1 {
+		t.Fatalf("expected 1 symlinked user skill, got %d", counts.Skills)
+	}
+}
+
+func TestCountEnvironmentFiltersModelDisabledSkills(t *testing.T) {
+	home := t.TempDir()
+	project := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	for _, root := range []string{home, filepath.Join(project, ".claude")} {
+		writeFile(t, filepath.Join(root, "skills", "disabled", "SKILL.md"), "---\ndisable-model-invocation: true # manual only\n---\nBody")
+		writeFile(t, filepath.Join(root, "skills", "enabled", "SKILL.md"), "---\ndisable-model-invocation: false\n---\nBody")
+		writeFile(t, filepath.Join(root, "skills", "default", "SKILL.md"), "---\nname: default\n---\ndisable-model-invocation: true")
+		writeFile(t, filepath.Join(root, "skills", "body-only", "SKILL.md"), "Example:\ndisable-model-invocation: true")
+		writeFile(t, filepath.Join(root, "skills", "no-entry", "notes.md"), "notes")
+	}
+	target := t.TempDir()
+	writeFile(t, filepath.Join(target, "SKILL.md"), "---\ndisable-model-invocation: true\n---\nBody")
+	if err := os.Symlink(target, filepath.Join(home, "skills", "linked-disabled")); err != nil {
+		t.Fatal(err)
+	}
+	if counts := CountEnvironment(project); counts.Skills != 3 {
+		t.Fatalf("expected 3 callable skills after filtering and deduplication, got %d", counts.Skills)
 	}
 }
 

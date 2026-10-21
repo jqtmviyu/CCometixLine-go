@@ -3,6 +3,8 @@ package render
 import (
 	"strings"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"ccometixline-go/internal/config"
 	"ccometixline-go/internal/segments"
 )
@@ -29,6 +31,19 @@ func (g StatusLineGenerator) Generate(items []segments.CollectedSegment) string 
 		return ""
 	}
 
+	for i, part := range parts {
+		if i > 0 && part.config.ID == config.SegmentContextWindow && g.Config.Style.WrapWidth > 0 {
+			prefix := g.joinParts(parts[:i])
+			if ansi.StringWidth(prefix) > g.Config.Style.WrapWidth {
+				return prefix + "\n" + g.joinParts(parts[i:])
+			}
+			break
+		}
+	}
+	return g.joinParts(parts)
+}
+
+func (g StatusLineGenerator) joinParts(parts []renderedItem) string {
 	if g.Config.Style.Separator == "\uE0B0" {
 		return g.joinWithPowerlineArrows(parts)
 	}

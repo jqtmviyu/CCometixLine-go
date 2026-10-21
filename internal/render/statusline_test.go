@@ -4,10 +4,46 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"ccometixline-go/internal/config"
 	"ccometixline-go/internal/protocol"
 	"ccometixline-go/internal/segments"
 )
+
+func TestWrapBeforeContextWindow(t *testing.T) {
+	for _, separator := range []string{" | ", "\uE0B0"} {
+		for _, tc := range []struct {
+			name  string
+			width int
+			wrap  bool
+		}{
+			{"over", 4, true},
+			{"equal", 5, false},
+			{"under", 6, false},
+			{"disabled", -1, false},
+		} {
+			t.Run(separator+tc.name, func(t *testing.T) {
+				cfg := config.DefaultConfig()
+				cfg.Style.Separator = separator
+				cfg.Style.WrapWidth = tc.width
+				color := uint8(2)
+				items := []segments.CollectedSegment{
+					{Config: config.SegmentConfig{ID: config.SegmentDirectory, Colors: config.ColorConfig{Text: &config.AnsiColor{C16: &color}}}, Data: segments.SegmentData{Primary: "中文"}},
+					{Config: config.SegmentConfig{ID: config.SegmentContextWindow, Icon: config.IconConfig{Plain: "⚡️"}}, Data: segments.SegmentData{Primary: "10%"}},
+					{Config: config.SegmentConfig{ID: config.SegmentEnvironment, Icon: config.IconConfig{Plain: "🛠️"}}, Data: segments.SegmentData{Primary: "mem:1"}},
+				}
+				result := ansi.Strip((StatusLineGenerator{Config: cfg}).Generate(items))
+				if strings.Contains(result, "\n") != tc.wrap {
+					t.Fatalf("wrap=%v, got %q", tc.wrap, result)
+				}
+				if tc.wrap && (!strings.HasPrefix(result, " 中文\n⚡️") || !strings.Contains(strings.Split(result, "\n")[1], "🛠️")) {
+					t.Fatalf("expected context and environment on second line, got %q", result)
+				}
+			})
+		}
+	}
+}
 
 func TestGenerateStatusLine(t *testing.T) {
 	cfg := config.DefaultConfig()
@@ -48,7 +84,7 @@ func TestGenerateStatusLine(t *testing.T) {
 	items := segments.CollectAll(cfg, config.LoadModelConfig(), input)
 	result := StatusLineGenerator{Config: cfg}.Generate(items)
 
-	checks := []string{"Sonnet 4.5", "high", "CCometixLine-go", "0.8% · 1.6k tokens", "$0.02", "1m31s", "mem", "skills", "mcp", "plugins"}
+	checks := []string{"Sonnet 4.5", "high", "CCometixLine-go", "0.8% · 1.6k tokens", "$0.02", "1m31s", "mem:", "sk:", "mcp:", "plg:"}
 	for _, check := range checks {
 		if !strings.Contains(result, check) {
 			t.Fatalf("expected result contain %q, got %q", check, result)

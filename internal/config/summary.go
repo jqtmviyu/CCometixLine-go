@@ -1,10 +1,14 @@
 package config
 
 import (
+	"bufio"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 type EnvironmentCounts struct {
@@ -15,7 +19,7 @@ type EnvironmentCounts struct {
 }
 
 type SettingsSnapshot struct {
-	counts         EnvironmentCounts
+	counts          EnvironmentCounts
 	configuredLevel string
 }
 
@@ -131,7 +135,7 @@ func collectSkillNames(claudeDir string, cwd string) map[string]struct{} {
 	return mergePathNameSets([]string{
 		filepath.Join(claudeDir, "skills"),
 		filepath.Join(cwd, ".claude", "skills"),
-	}, directChildDirNames)
+	}, callableSkillNames)
 }
 
 func mergeNameSets(settingsList []parsedSettings, names func(parsedSettings) map[string]struct{}) map[string]struct{} {
@@ -196,7 +200,7 @@ func markdownFileCount(dir string) int {
 	return count
 }
 
-func directChildDirNames(dir string) map[string]struct{} {
+func callableSkillNames(dir string) map[string]struct{} {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return map[string]struct{}{}
@@ -204,11 +208,48 @@ func directChildDirNames(dir string) map[string]struct{} {
 
 	result := map[string]struct{}{}
 	for _, entry := range entries {
-		if entry.IsDir() {
+		isDir := entry.IsDir()
+		// 跟随 skill 子目录的软链接，让共享安装的 skill 也参与统计。
+		if entry.Type()&os.ModeSymlink != 0 {
+			info, err := os.Stat(filepath.Join(dir, entry.Name()))
+			isDir = err == nil && info.IsDir()
+		}
+		if isDir && skillAllowsModelInvocation(filepath.Join(dir, entry.Name(), "SKILL.md")) {
 			result[entry.Name()] = struct{}{}
 		}
 	}
 	return result
+}
+
+func skillAllowsModelInvocation(path string) bool {
+	file, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+
+	reader := bufio.NewReader(file)
+	line, err := reader.ReadString('\n')
+	if strings.TrimSpace(strings.TrimPrefix(line, "\uFEFF")) != "---" {
+		return err == nil || err == io.EOF
+	}
+
+	// 只读取 YAML 头部，正文中的配置示例不参与调用权限判断。
+	var header strings.Builder
+	for err == nil {
+		line, err = reader.ReadString('\n')
+		if marker := strings.TrimSpace(line); marker == "---" || marker == "..." {
+			var metadata struct {
+				Disabled bool `yaml:"disable-model-invocation"`
+			}
+			if yaml.Unmarshal([]byte(header.String()), &metadata) != nil {
+				return false
+			}
+			return !metadata.Disabled
+		}
+		header.WriteString(line)
+	}
+	return false
 }
 
 func fileCount(path string) int {
