@@ -1,0 +1,13 @@
+{
+  "name": "ccline-mods",
+  "owner": { "name": "jqtmviyu" },
+  "description": "CCometixLine companion mods",
+  "plugins": [
+    {
+      "name": "ccline",
+      "source": "./mods/ccline",
+      "description": "CCometixLine expansion: token rate and context breakdown in the prompt band",
+      "version": "0.1.0"
+    }
+  ]
+}

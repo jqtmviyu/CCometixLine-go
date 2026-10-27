@@ -1,0 +1,7 @@
+{
+  "name": "ccline",
+  "version": "0.1.0",
+  "description": "CCometixLine expansion: token rate and context breakdown in the prompt band",
+  "author": { "name": "jqtmviyu" },
+  "types": "./types/index.d.ts"
+}
