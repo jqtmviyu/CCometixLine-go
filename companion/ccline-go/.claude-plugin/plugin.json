@@ -1,0 +1,8 @@
+{
+  "name": "ccline-go",
+  "displayName": "CCometixLine Go companion",
+  "description": "Locally collects context breakdown, request timing, running tools and agents for the Go statusline.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "keywords": ["statusline", "context", "timing"]
+}

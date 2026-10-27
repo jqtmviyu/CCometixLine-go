@@ -14,49 +14,69 @@ type StatusLineGenerator struct {
 }
 
 type renderedItem struct {
-	text   string
-	config config.SegmentConfig
+	id   config.SegmentID
+	text string
 }
 
 func (g StatusLineGenerator) Generate(items []segments.CollectedSegment) string {
-	var parts []renderedItem
+	byID := make(map[config.SegmentID]renderedItem, len(items))
+	order := make([]config.SegmentID, 0, len(items))
+	for _, item := range items {
+		text := g.renderSegment(item.Config, item.Data)
+		if text == "" {
+			continue
+		}
+		if _, exists := byID[item.Config.ID]; !exists {
+			order = append(order, item.Config.ID)
+		}
+		byID[item.Config.ID] = renderedItem{id: item.Config.ID, text: text}
+	}
+
+	layout := g.Config.Layout.Lines
+	if len(layout) == 0 {
+		layout = []config.LayoutLine{{Segments: order}}
+	}
+
+	var lines []string
+	for _, row := range layout {
+		parts := make([]renderedItem, 0, len(row.Segments))
+		for _, id := range row.Segments {
+			if item, ok := byID[id]; ok {
+				parts = append(parts, item)
+			}
+		}
+		if len(parts) > 0 {
+			lines = append(lines, g.joinParts(parts))
+		}
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func (g StatusLineGenerator) GenerateTaskLine(items []segments.CollectedSegment, columns int) string {
+	parts := make([]renderedItem, 0, len(items))
 	for _, item := range items {
 		text := g.renderSegment(item.Config, item.Data)
 		if text != "" {
-			parts = append(parts, renderedItem{text, item.Config})
+			parts = append(parts, renderedItem{id: item.Config.ID, text: text})
 		}
 	}
-
 	if len(parts) == 0 {
 		return ""
 	}
-
-	for i, part := range parts {
-		if i > 0 && part.config.ID == config.SegmentContextWindow && g.Config.Style.WrapWidth > 0 {
-			prefix := g.joinParts(parts[:i])
-			if ansi.StringWidth(prefix) > g.Config.Style.WrapWidth {
-				return prefix + "\n" + g.joinParts(parts[i:])
-			}
-			break
-		}
+	text := g.joinParts(parts)
+	if columns > 0 && ansi.StringWidth(text) > columns {
+		return ansi.Truncate(text, columns, "…")
 	}
-	return g.joinParts(parts)
+	return text
 }
 
 func (g StatusLineGenerator) joinParts(parts []renderedItem) string {
-	if g.Config.Style.Separator == "\uE0B0" {
-		return g.joinWithPowerlineArrows(parts)
-	}
-
-	texts := make([]string, len(parts))
-	for i, p := range parts {
-		texts[i] = p.text
-	}
-	return g.joinWithWhiteSeparators(texts)
+	return g.joinWithWhiteSeparators(parts)
 }
 
 func (g StatusLineGenerator) renderSegment(cfg config.SegmentConfig, data segments.SegmentData) string {
-	icon := g.getIcon(cfg)
+	icon := cfg.Icon.Emoji
 	if dynamicIcon, ok := data.Metadata["dynamic_icon"]; ok {
 		icon = dynamicIcon
 	}
@@ -65,7 +85,10 @@ func (g StatusLineGenerator) renderSegment(cfg config.SegmentConfig, data segmen
 		bgCode := ApplyBackgroundColor(cfg.Colors.Background)
 		iconColored := strings.ReplaceAll(ApplyColor(icon, cfg.Colors.Icon), "\x1b[0m", "")
 		textStyled := strings.ReplaceAll(ApplyStyle(data.Primary, cfg.Colors.Text, cfg.Styles.TextBold), "\x1b[0m", "")
-		content := " " + iconColored + " " + textStyled + " "
+		content := " " + textStyled + " "
+		if icon != "" {
+			content = " " + iconColored + " " + textStyled + " "
+		}
 		if data.Secondary != "" {
 			secondary := strings.ReplaceAll(ApplyStyle(data.Secondary, cfg.Colors.Text, cfg.Styles.TextBold), "\x1b[0m", "")
 			content += secondary + " "
@@ -75,55 +98,32 @@ func (g StatusLineGenerator) renderSegment(cfg config.SegmentConfig, data segmen
 
 	iconColored := ApplyColor(icon, cfg.Colors.Icon)
 	textStyled := ApplyStyle(data.Primary, cfg.Colors.Text, cfg.Styles.TextBold)
-	segment := iconColored + " " + textStyled
+	segment := textStyled
+	if icon != "" {
+		segment = iconColored + " " + textStyled
+	}
 	if data.Secondary != "" {
 		segment += " " + ApplyStyle(data.Secondary, cfg.Colors.Text, cfg.Styles.TextBold)
 	}
 	return segment
 }
 
-func (g StatusLineGenerator) getIcon(cfg config.SegmentConfig) string {
-	switch g.Config.Style.Mode {
-	case config.StyleModePlain:
-		return cfg.Icon.Plain
-	case config.StyleModeNerdFont, config.StyleModePowerline:
-		return cfg.Icon.NerdFont
-	default:
-		return cfg.Icon.Plain
-	}
+func isModelEffortPair(left config.SegmentID, right config.SegmentID) bool {
+	return (left == config.SegmentModel && right == config.SegmentEffort) ||
+		(left == config.SegmentEffort && right == config.SegmentModel)
 }
 
-func (g StatusLineGenerator) joinWithWhiteSeparators(rendered []string) string {
-	separator := "\x1b[37m" + g.Config.Style.Separator + "\x1b[0m"
-	return strings.Join(rendered, separator)
-}
-
-func (g StatusLineGenerator) joinWithPowerlineArrows(parts []renderedItem) string {
-	if len(parts) == 1 {
-		return parts[0].text
+func (g StatusLineGenerator) joinWithWhiteSeparators(parts []renderedItem) string {
+	var result strings.Builder
+	for i, part := range parts {
+		if i > 0 {
+			separator := g.Config.Style.Separator
+			if isModelEffortPair(parts[i-1].id, part.id) {
+				separator = " · "
+			}
+			result.WriteString("\x1b[37m" + separator + "\x1b[0m")
+		}
+		result.WriteString(part.text)
 	}
-
-	result := parts[0].text
-	for i := 1; i < len(parts); i++ {
-		prevBg := parts[i-1].config.Colors.Background
-		currBg := parts[i].config.Colors.Background
-		result += g.createPowerlineArrow(prevBg, currBg)
-		result += parts[i].text
-	}
-	result += "\x1b[0m"
-	return result
-}
-
-func (g StatusLineGenerator) createPowerlineArrow(prevBg *config.AnsiColor, currBg *config.AnsiColor) string {
-	arrow := "\uE0B0"
-	switch {
-	case prevBg != nil && currBg != nil:
-		return ApplyBackgroundColor(currBg) + ColorToForegroundCode(prevBg) + arrow + "\x1b[0m"
-	case prevBg != nil:
-		return ColorToForegroundCode(prevBg) + arrow + "\x1b[0m"
-	case currBg != nil:
-		return ApplyBackgroundColor(currBg) + arrow + "\x1b[0m"
-	default:
-		return arrow
-	}
+	return result.String()
 }

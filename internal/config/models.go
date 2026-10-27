@@ -1,6 +1,7 @@
 package config
 
 import (
+	"math"
 	"os"
 	"regexp"
 	"strings"
@@ -11,12 +12,21 @@ import (
 type ModelConfig struct {
 	ModelEntries     []ModelEntry      `toml:"models"`
 	ContextModifiers []ContextModifier `toml:"context_modifiers"`
+
+	explicitModelEntries     []ModelEntry
+	explicitContextModifiers []ContextModifier
 }
 
 type ModelEntry struct {
-	Pattern      string `toml:"pattern"`
-	DisplayName  string `toml:"display_name"`
-	ContextLimit uint32 `toml:"context_limit"`
+	Pattern                 string             `toml:"pattern"`
+	DisplayName             string             `toml:"display_name"`
+	ContextLimit            uint32             `toml:"context_limit"`
+	InputPriceUSDPerMillion float64            `toml:"input_price_usd_per_million"`
+	CacheWriteMultipliers   map[string]float64 `toml:"cache_write_multipliers"`
+	Match                   string             `toml:"match"`
+
+	compiledRegex *regexp.Regexp
+	invalidRegex  bool
 }
 
 type ContextModifier struct {
@@ -103,14 +113,123 @@ func LoadModelConfig() ModelConfig {
 		return config
 	}
 
+	external.ModelEntries = compileModelEntries(external.ModelEntries)
 	config.ModelEntries = append(external.ModelEntries, config.ModelEntries...)
 	config.ContextModifiers = append(external.ContextModifiers, config.ContextModifiers...)
+	config.explicitModelEntries = external.ModelEntries
+	config.explicitContextModifiers = external.ContextModifiers
 	return config
+}
+
+func compileModelEntries(entries []ModelEntry) []ModelEntry {
+	for i := range entries {
+		if strings.EqualFold(strings.TrimSpace(entries[i].Match), "regex") {
+			compiled, err := regexp.Compile("(?i:" + entries[i].Pattern + ")")
+			if err != nil {
+				entries[i].invalidRegex = true
+				continue
+			}
+			entries[i].compiledRegex = compiled
+		}
+	}
+	return entries
+}
+
+func modelEntryMatches(modelID string, entry ModelEntry) bool {
+	if strings.TrimSpace(entry.Pattern) == "" {
+		return false
+	}
+
+	id := strings.ToLower(modelID)
+	pattern := strings.ToLower(entry.Pattern)
+	switch strings.ToLower(strings.TrimSpace(entry.Match)) {
+	case "", "contains":
+		return strings.Contains(id, pattern)
+	case "prefix":
+		return strings.HasPrefix(id, pattern)
+	case "exact":
+		return id == pattern
+	case "regex":
+		if entry.invalidRegex {
+			return false
+		}
+		compiled := entry.compiledRegex
+		if compiled == nil {
+			var err error
+			compiled, err = regexp.Compile("(?i:" + entry.Pattern + ")")
+			if err != nil {
+				return false
+			}
+		}
+		return compiled.MatchString(modelID)
+	default:
+		return false
+	}
 }
 
 func (m ModelConfig) GetContextLimit(modelID string) uint32 {
 	_, limit, _ := m.resolve(modelID)
 	return limit
+}
+
+func (m ModelConfig) CacheWriteCost(modelID, ttl string, tokens uint64) (float64, bool) {
+	if tokens == 0 {
+		return 0, false
+	}
+
+	for _, entry := range m.ModelEntries {
+		if !modelEntryMatches(modelID, entry) {
+			continue
+		}
+		multiplier, ok := entry.CacheWriteMultipliers[ttl]
+		price := entry.InputPriceUSDPerMillion
+		if !ok || price <= 0 || multiplier <= 0 || math.IsInf(price, 0) || math.IsNaN(price) || math.IsInf(multiplier, 0) || math.IsNaN(multiplier) {
+			return 0, false
+		}
+		cost := float64(tokens) * price * multiplier / 1_000_000
+		if math.IsInf(cost, 0) || math.IsNaN(cost) {
+			return 0, false
+		}
+		return cost, true
+	}
+
+	return 0, false
+}
+
+func (m ModelConfig) ResolveContextLimit(modelID string, reported uint32) (uint32, bool) {
+	if configured, ok := m.explicitContextLimit(modelID); ok {
+		return configured, reported == 0 || configured != reported
+	}
+	if reported > 0 {
+		return reported, false
+	}
+
+	return m.GetContextLimit(modelID), false
+}
+
+func (m ModelConfig) explicitContextLimit(modelID string) (uint32, bool) {
+	modelLower := strings.ToLower(modelID)
+	var limit uint32
+	found := false
+
+	for _, entry := range m.explicitModelEntries {
+		if modelEntryMatches(modelID, entry) {
+			limit = entry.ContextLimit
+			found = limit > 0
+			break
+		}
+	}
+	for _, modifier := range m.explicitContextModifiers {
+		if strings.Contains(modelLower, strings.ToLower(modifier.Pattern)) {
+			if modifier.ContextLimit > 0 {
+				limit = modifier.ContextLimit
+				found = true
+			}
+			break
+		}
+	}
+
+	return limit, found
 }
 
 func (m ModelConfig) GetDisplayName(modelID string) (string, bool) {
@@ -135,7 +254,7 @@ func (m ModelConfig) resolve(modelID string) (string, uint32, string) {
 	baseName := ""
 	baseLimit := uint32(0)
 	for _, entry := range m.ModelEntries {
-		if strings.Contains(modelLower, strings.ToLower(entry.Pattern)) {
+		if modelEntryMatches(modelID, entry) {
 			baseName = entry.DisplayName
 			baseLimit = entry.ContextLimit
 			break

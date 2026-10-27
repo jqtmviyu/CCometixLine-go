@@ -1,22 +1,16 @@
 # CCometixLine Go
 
-使用 go 重新实现 rust 版本的 CCometixLine
+参考上游项目 [Haleclipse/CCometixLine](https://github.com/Haleclipse/CCometixLine)，使用 Go 重新实现，并针对精简使用和第三方模型做了定制。
 
 ## 已实现
 
-- 读取 Claude Code stdin JSON
-- 读取 `~/.claude/ccline/config.toml`
-- 兼容基础配置结构
+- 读取 Claude Code statusline stdin JSON，并按官方输入 token 口径展示上下文占用
+- 支持缓存状态、缓存命中率、miss 原因；冷缓存成本只在模型价格和 TTL 写入倍率已配置时显示
+- 支持通过可选本地 companion plugin 读取上下文分类、TTFT/TPS、运行中的工具和 agent
+- 支持 `subagentStatusLine` 的任务名称、状态、label、耗时和 token 趋势
+- 支持显式固定行布局：默认两行，可按 segment 自定义字段和断点，不按宽度自动折行
 - 输出 ANSI statusline
-- 已实现 segment：
-  - model
-  - effort (新增)
-  - directory
-  - git
-  - context_window
-  - cost
-  - session
-  - environment (新增)
+- segment：model、effort、directory、git、context_window、context.breakdown、cache、cache.cold_cost、timing.ttft、timing.tps、activity.tools、activity.agents、cost、session、environment 和 task.*
 
 ## 未实现
 - `--config` TUI
@@ -37,11 +31,21 @@
 - `testdata`：样例输入与 transcript
 - `examples/config.toml`：示例配置
 
-## 本地运行
+## 本地运行与预览
+
+Claude Code 管道输入时，程序按 statusline 协议读取 stdin：
 
 ```bash
 go run ./cmd/ccline < ./testdata/input/basic.json
 ```
+
+在终端里直接运行 `ccline` 会展示当前配置的示例预览；也可以显式运行：
+
+```bash
+go run ./cmd/ccline preview
+```
+
+预览使用固定示例数据，不读取 Git 状态、项目 settings、真实 bridge 或 environment cache，也不会修改配置。它展示当前启用 segment 的图标、颜色和显式行布局；示例值不代表实时会话。
 
 ## 测试
 
@@ -85,16 +89,62 @@ go test ./...
 - `skills` 统计 `~/.claude/skills/*/SKILL.md` 与 `<cwd>/.claude/skills/*/SKILL.md`；过滤 YAML 头部中 `disable-model-invocation: true` 的项，按子目录名称去重。只读取头部，正文不参与判断。
 - skill 子目录支持指向目录的软链接，适用于共享安装的 skills。
 - `plugins` 统计 `~/.claude/settings.json`、`<cwd>/.claude/settings.json`、`<cwd>/.claude/settings.local.json` 里的 `enabledPlugins=true`；按名称去重
+- 状态栏将环境计数显示为 `memory 3 · skill 5 · mcp 2 · plugin 1`。
+- `mem/skills/mcp/plugins` 汇总按配置目录与当前工作目录缓存 10 秒，缓存只保存计数；缓存写入 bridge 存储目录下的独立文件，不依赖 companion，也不改会话 bridge。变更最多延迟 10 秒反映。
 
 ## 配置与默认行为
 
-- 默认读取 `~/.claude/ccline/config.toml` 和 `~/.claude/ccline/models.toml`。
-- 如果设置了 `CLAUDE_CONFIG_DIR`，`config.toml` 和 `models.toml` 都切换到 `<CLAUDE_CONFIG_DIR>/ccline/`。
-- `effort` 读取用户级设置时也会跟随 `CLAUDE_CONFIG_DIR`，即用户设置文件位置变为 `<CLAUDE_CONFIG_DIR>/settings.json`。
-- 默认配置启用 `model`、`effort`、`directory`、`git`、`context_window`、`environment`。
-- 默认配置关闭 `cost`、`session`。
-- `⚡️` 前面的内容超过 80 个终端显示列时，从 `⚡️` 开始换行，后面的 `🛠️` 跟随到第二行。中文和 emoji 按显示宽度计算，ANSI 颜色码不占宽度。
-- 在 `config.toml` 的 `[style]` 下设置 `wrap_width = 60` 可调整阈值；设为 `-1` 关闭自动换行。
+- 默认读取 `~/.claude/ccline/config.toml` 和 `~/.claude/ccline/models.toml`；设置 `CLAUDE_CONFIG_DIR` 后改为 `<CLAUDE_CONFIG_DIR>/ccline/`。
+- `config.toml` 用 `[[layout.lines]]` 固定分组和显示顺序；默认三行，添加、删除或合并分组即可配置一行、三行或任意自定义断点。没有可显示内容的组会省略，因此实际输出可能少于三行。完整样例见 `examples/config.toml`。
+- 每组只显示列出的 segment ID；想隐藏字段就从布局中移除，或在 `[[segments]]` 中设为 `enabled = false`。主 statusline 不会按长度自动折行，长行可通过选择字段或增加显式行组控制。运行 `ccline preview` 查看效果。
+- 显示顺序由 layout 决定；不写 `[[segments]]` 时使用内置 segment 默认值。若显式写 `[[segments]]`，列表中的项目同时定义启用状态、图标、颜色和选项，未列出的 segment 不参与渲染。
+- 旧版 Go `[[segments]]` 配置仍可读取，且默认按原顺序排成一行；上游 CCometixLine 的配置格式不兼容。
+- 默认第一行集中模型/力度、工作区/Git 和 memory/skills/MCP/plugins；第二行集中 tokens/msgs、缓存、费用/会话与 TTFT/TPS；第三行集中 tools/agents 活动。`cost`、`session` 默认关闭。可按需调整布局和启用字段。
+- 旧配置中的 `style.wrap_width` 会被忽略；主 statusline 不做宽度检测或自动折行。
+- `effort` 读取用户级设置时跟随 `CLAUDE_CONFIG_DIR`。
+- 状态栏只使用一套 emoji 图标，不提供 Nerd Font 档位。默认图标：模型 `🤖`、Git `🐙`、environment `🧰`、tokens `💿`、warm cache `🔥`、cold cost `💲`、msgs `🔈`、tools `✏️`、TPS `⚡`；effort 无图标，并与模型相邻显示为 `模型 · 思考力度`。
+- `task.status` 使用 `🏃` 表示 running、`✓` 表示 completed、`✗` 表示 failed。
+- 自定义 segment 图标使用 `icon.emoji`：
+
+```toml
+[[segments]]
+id = "model"
+enabled = true
+
+[segments.icon]
+emoji = "🤖"
+```
+
+缓存成本需要在 `models.toml` 中为模型配置输入价格和对应 TTL 的缓存写入倍率；没有匹配项时只显示缓存状态，不猜价格：
+
+```toml
+[[models]]
+pattern = "my-provider/model-x"
+match = "prefix" # contains (默认)、prefix、exact、regex
+input_price_usd_per_million = 2.5
+cache_write_multipliers = { "5m" = 1.25, "1h" = 2.0 }
+```
+
+## Companion 指标
+
+`context.breakdown`、`timing.ttft`、`timing.tps`、`activity.tools` 和 `activity.agents` 需要 Claude Code 2.1.287+ 及本地 companion plugin。它只观察 Claude Code 本地事件并写入 `~/.claude/ccline/bridge/<session_id>.json`，不发起网络请求。未安装时这些 segment 自动隐藏；缓存字段由 statusline stdin 提供，需要 Claude Code 2.1.251+。
+
+- `timing.ttft` 是模型请求发出到首个流片段的延迟。
+- `timing.tps` 是输出 token 数除以首个流片段到流结束的时间；只计主会话，不含 agent 请求，流时长不足 100ms 时不更新。它是最近完成请求的平均生成速度，不是即时速度。
+- `cache` 直接显示 Claude Code 提供的会话缓存状态、命中率、miss 数和最后 miss 原因；命中率沿用 Claude Code 的输入 token 统计，不从单次缓存 token 估算。
+- `cache.cold_cost` 估算公式为 `recache_tokens_if_cold × input_price_usd_per_million × cache_write_multiplier ÷ 1,000,000`，缺少任一价格参数时隐藏。
+
+companion mod 资源随 ccline 二进制内嵌，因此可从任意目录安装，无需额外下载或保留仓库 checkout：
+
+```bash
+ccline mod install
+ccline mod status
+ccline mod uninstall
+```
+
+`install` 会把内嵌资源写入 `<CLAUDE_CONFIG_DIR>/ccline/mod`（默认 `~/.claude/ccline/mod`），注册本地 user-scope marketplace 并安装或更新插件；Claude Code 需为 2.1.287 或更新版本。它还会创建权限为 `0700` 的 bridge 目录。安装或卸载后，在当前 Claude Code 会话运行 `/reload-plugins`；后续会话事件才开始写入 bridge。`status` 显示插件版本和 bridge 快照状态；`uninstall` 保留 bridge 数据与 ccline 配置，并在没有其他 user-scope 插件使用时移除 marketplace。
+
+`task.*` 通过 Claude Code 的 `subagentStatusLine` 输入工作，需要单独把该设置也指向同一个可执行文件；主 statusline 的普通文本协议与 subagent 的 JSONL 输出协议会根据 stdin 自动区分。
 
 ## 接入 Claude Code
 
@@ -105,6 +155,11 @@ Windows 示例：
 ```json
 {
   "statusLine": {
+    "type": "command",
+    "command": "C:\\Users\\demo\\.claude\\ccline\\ccline.exe",
+    "refreshInterval": 2
+  },
+  "subagentStatusLine": {
     "type": "command",
     "command": "C:\\Users\\demo\\.claude\\ccline\\ccline.exe"
   }

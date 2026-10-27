@@ -7,7 +7,7 @@
     "current_dir": "D:/Work-Hxx/Demo/statusLine/CCometixLine-go"
   },
   "transcript_path": "D:/Work-Hxx/Demo/statusLine/CCometixLine-go/testdata/transcripts/session-normal.jsonl",
-  "effort": "high",
+  "effort": {"level": "high"},
   "cost": {
     "total_cost_usd": 0.023,
     "total_duration_ms": 91234,

@@ -1,15 +1,43 @@
-# CCometixLine Model Configuration
-# This file defines model display names and context limits for different LLM models
-# File location: ~/.claude/ccline/models.toml
+# Model aliases, context windows, and optional pricing for cache cold-cost estimates.
+# Model rules match case-insensitive contains by default; match also supports prefix, exact, regex.
+# Pricing is USD per million input tokens; cache write multipliers are provider-specific.
+# Cold-cost is omitted unless both price and the multiplier for the reported TTL are configured.
 
-models = []
+[[models]]
+pattern = "glm-4.5"
+# match = "prefix" # contains (default), prefix, exact, regex
+# match = "regex"  # for example: ^provider/model-[0-9]+$
+display_name = "GLM-4.5"
+context_limit = 128000
+# input_price_usd_per_million = 0.0
+# cache_write_multipliers = { "5m" = 1.25, "1h" = 2.0 }
 
-# Model configurations
-# Each [[models]] section defines a model pattern and its properties
-# Order matters: first match wins, so put more specific patterns first
+[[models]]
+pattern = "kimi-k2-turbo"
+display_name = "Kimi K2 Turbo"
+context_limit = 128000
 
-# Example of how to add new models:
-# [[models]]
-# pattern = "glm-4.5"
-# display_name = "GLM-4.5"
-# context_limit = 128000
+[[models]]
+pattern = "kimi-k2"
+display_name = "Kimi K2"
+context_limit = 128000
+
+[[models]]
+pattern = "qwen3-coder"
+display_name = "Qwen Coder"
+context_limit = 256000
+
+[[models]]
+pattern = "deepseek-v4-flash"
+display_name = "DeepSeek-V4-Flash"
+context_limit = 1000000
+
+[[models]]
+pattern = "deepseek-v4-pro"
+display_name = "DeepSeek-V4-Pro"
+context_limit = 1000000
+
+[[context_modifiers]]
+pattern = "[1m]"
+display_suffix = " 1M"
+context_limit = 1000000

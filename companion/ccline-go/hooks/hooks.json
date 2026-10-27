@@ -1,0 +1,4 @@
+{
+  "description": "Collects local session data for CCometixLine Go",
+  "modules": ["./ccline.ts"]
+}

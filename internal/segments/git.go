@@ -25,7 +25,7 @@ type GitSegment struct {
 }
 
 func (s GitSegment) Collect() *SegmentData {
-	info, ok := s.getGitInfo(s.Input.Workspace.CurrentDir)
+	info, ok := getGitInfo(s.Input.Workspace.CurrentDir)
 	if !ok {
 		return nil
 	}
@@ -52,52 +52,57 @@ func (s GitSegment) Collect() *SegmentData {
 	}
 }
 
-func (s GitSegment) getGitInfo(workingDir string) (GitInfo, bool) {
-	branch, ok := resolveGitHead(workingDir)
-	if !ok {
+func getGitInfo(workingDir string) (GitInfo, bool) {
+	output, err := runGit(workingDir, "status", "--porcelain=v2", "--branch")
+	if err != nil {
 		return GitInfo{}, false
 	}
-	if branch == "" {
-		branch = "detached"
-	}
-
-	return GitInfo{
-		Branch: branch,
-		Status: s.getStatus(workingDir),
-	}, true
+	return parseGitStatusV2(output)
 }
 
-func resolveGitHead(workingDir string) (string, bool) {
-	if _, err := runGit(workingDir, "rev-parse", "--git-dir"); err != nil {
-		return "", false
+func parseGitStatusV2(output string) (GitInfo, bool) {
+	info := GitInfo{}
+	branchFound := false
+	dirty := false
+	conflicts := false
+
+	for _, line := range strings.Split(output, "\n") {
+		switch {
+		case strings.HasPrefix(line, "# branch.head "):
+			branch := strings.TrimSpace(strings.TrimPrefix(line, "# branch.head "))
+			if branch != "" && branch != "(unknown)" && branch != "(initial)" {
+				if branch == "(detached)" {
+					branch = "detached"
+				}
+				info.Branch = branch
+				branchFound = true
+			}
+		case strings.HasPrefix(line, "# branch.oid "):
+			if !branchFound {
+				oid := strings.TrimSpace(strings.TrimPrefix(line, "# branch.oid "))
+				if oid != "" && oid != "(initial)" {
+					info.Branch = "detached"
+					branchFound = true
+				}
+			}
+		case strings.HasPrefix(line, "u "):
+			conflicts = true
+			dirty = true
+		case strings.HasPrefix(line, "1 "), strings.HasPrefix(line, "2 "), strings.HasPrefix(line, "? "):
+			dirty = true
+		}
 	}
 
-	output, err := runGit(workingDir, "branch", "--show-current")
-	if err != nil {
-		return "detached", true
+	if !branchFound {
+		return GitInfo{}, false
 	}
-
-	branch := strings.TrimSpace(output)
-	if branch == "" {
-		return "detached", true
+	info.Status = GitStatusClean
+	if conflicts {
+		info.Status = GitStatusConflicts
+	} else if dirty {
+		info.Status = GitStatusDirty
 	}
-	return branch, true
-}
-
-func (s GitSegment) getStatus(workingDir string) GitStatus {
-	output, err := runGit(workingDir, "status", "--porcelain")
-	if err != nil {
-		return GitStatusClean
-	}
-
-	statusText := strings.TrimSpace(output)
-	if statusText == "" {
-		return GitStatusClean
-	}
-	if strings.Contains(statusText, "UU") || strings.Contains(statusText, "AA") || strings.Contains(statusText, "DD") {
-		return GitStatusConflicts
-	}
-	return GitStatusDirty
+	return info, true
 }
 
 func runGit(workingDir string, args ...string) (string, error) {

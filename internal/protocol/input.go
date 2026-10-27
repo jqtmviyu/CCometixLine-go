@@ -20,9 +20,20 @@ type Cost struct {
 }
 
 type ContextWindow struct {
+	TotalInputTokens  *uint64             `json:"total_input_tokens"`
 	ContextWindowSize *uint32             `json:"context_window_size"`
 	UsedPercentage    *float64            `json:"used_percentage"`
 	CurrentUsage      *ContextWindowUsage `json:"current_usage"`
+}
+
+func (w ContextWindow) ContextTokens() (uint64, bool) {
+	if w.TotalInputTokens != nil {
+		return *w.TotalInputTokens, true
+	}
+	if w.CurrentUsage == nil {
+		return 0, false
+	}
+	return w.CurrentUsage.ContextTokens()
 }
 
 type ContextWindowUsage struct {
@@ -35,32 +46,37 @@ type Effort struct {
 }
 
 type InputData struct {
+	SessionID      string         `json:"session_id"`
 	Model          Model          `json:"model"`
 	Workspace      Workspace      `json:"workspace"`
 	TranscriptPath string         `json:"transcript_path"`
 	Effort         *Effort        `json:"effort"`
 	Cost           *Cost          `json:"cost"`
 	ContextWindow  *ContextWindow `json:"context_window"`
+	PromptCache    *PromptCache   `json:"prompt_cache"`
 }
 
-type PromptTokensDetails struct {
-	CachedTokens *uint32 `json:"cached_tokens,omitempty"`
-	AudioTokens  *uint32 `json:"audio_tokens,omitempty"`
+type PromptCache struct {
+	Warm                *bool      `json:"warm"`
+	CachingObserved     *bool      `json:"caching_observed"`
+	TTL                 *string    `json:"ttl"`
+	ExpiresAt           *float64   `json:"expires_at"`
+	Requests            *uint64    `json:"requests"`
+	Misses              *uint64    `json:"misses"`
+	HitRatio            *float64   `json:"hit_ratio"`
+	LastMissCause       *MissCause `json:"last_miss_cause"`
+	RecacheTokensIfCold *uint64    `json:"recache_tokens_if_cold"`
+}
+
+type MissCause struct {
+	Causes []string `json:"causes"`
 }
 
 type RawUsage struct {
-	InputTokens               *uint32              `json:"input_tokens,omitempty"`
-	PromptTokens              *uint32              `json:"prompt_tokens,omitempty"`
-	OutputTokens              *uint32              `json:"output_tokens,omitempty"`
-	CompletionTokens          *uint32              `json:"completion_tokens,omitempty"`
-	TotalTokens               *uint32              `json:"total_tokens,omitempty"`
-	CacheCreationInputTokens  *uint32              `json:"cache_creation_input_tokens,omitempty"`
-	CacheReadInputTokens      *uint32              `json:"cache_read_input_tokens,omitempty"`
-	CacheCreationPromptTokens *uint32              `json:"cache_creation_prompt_tokens,omitempty"`
-	CacheReadPromptTokens     *uint32              `json:"cache_read_prompt_tokens,omitempty"`
-	CachedTokens              *uint32              `json:"cached_tokens,omitempty"`
-	PromptTokensDetails       *PromptTokensDetails `json:"prompt_tokens_details,omitempty"`
-	CompletionTokensDetails   map[string]uint32    `json:"completion_tokens_details,omitempty"`
+	InputTokens              *uint32 `json:"input_tokens,omitempty"`
+	OutputTokens             *uint32 `json:"output_tokens,omitempty"`
+	CacheCreationInputTokens *uint32 `json:"cache_creation_input_tokens,omitempty"`
+	CacheReadInputTokens     *uint32 `json:"cache_read_input_tokens,omitempty"`
 }
 
 type NormalizedUsage struct {
@@ -92,24 +108,19 @@ type TranscriptEntry struct {
 
 func (u RawUsage) Normalize() NormalizedUsage {
 	return NormalizedUsage{
-		InputTokens:              firstUint32(u.InputTokens, u.PromptTokens),
-		OutputTokens:             firstUint32(u.OutputTokens, u.CompletionTokens),
-		CacheCreationInputTokens: firstUint32(u.CacheCreationInputTokens, u.CacheCreationPromptTokens),
-		CacheReadInputTokens: firstUint32(
-			u.CacheReadInputTokens,
-			u.CacheReadPromptTokens,
-			u.CachedTokens,
-			cachedTokensFromDetails(u.PromptTokensDetails),
-		),
+		InputTokens:              valueOrZero(u.InputTokens),
+		OutputTokens:             valueOrZero(u.OutputTokens),
+		CacheCreationInputTokens: valueOrZero(u.CacheCreationInputTokens),
+		CacheReadInputTokens:     valueOrZero(u.CacheReadInputTokens),
 	}
 }
 
-func (u NormalizedUsage) UsedTokens() uint32 {
-	return u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens + u.OutputTokens
+func (u NormalizedUsage) ContextTokens() uint64 {
+	return uint64(u.InputTokens) + uint64(u.CacheCreationInputTokens) + uint64(u.CacheReadInputTokens)
 }
 
-func (u NormalizedUsage) CachedTokens() uint32 {
-	return u.CacheCreationInputTokens + u.CacheReadInputTokens
+func (u NormalizedUsage) CachedTokens() uint64 {
+	return uint64(u.CacheCreationInputTokens) + uint64(u.CacheReadInputTokens)
 }
 
 func (m *Message) UnmarshalJSON(data []byte) error {
@@ -153,31 +164,24 @@ func (u *ContextWindowUsage) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (u ContextWindowUsage) UsedTokens() uint32 {
+func (u ContextWindowUsage) ContextTokens() (uint64, bool) {
 	if u.Number != nil {
-		return *u.Number
+		return uint64(*u.Number), true
 	}
 	if u.Raw == nil {
+		return 0, false
+	}
+	if u.Raw.InputTokens == nil && u.Raw.CacheCreationInputTokens == nil && u.Raw.CacheReadInputTokens == nil {
+		return 0, false
+	}
+
+	return u.Raw.Normalize().ContextTokens(), true
+}
+
+func valueOrZero(value *uint32) uint32 {
+	if value == nil {
 		return 0
 	}
 
-	return u.Raw.Normalize().UsedTokens()
-}
-
-func cachedTokensFromDetails(details *PromptTokensDetails) *uint32 {
-	if details == nil {
-		return nil
-	}
-
-	return details.CachedTokens
-}
-
-func firstUint32(values ...*uint32) uint32 {
-	for _, value := range values {
-		if value != nil {
-			return *value
-		}
-	}
-
-	return 0
+	return *value
 }

@@ -20,14 +20,14 @@ func TestEnvironmentSegmentCollectReturnsNilForEmptyEnvironment(t *testing.T) {
 	}
 }
 
-func TestEnvironmentSegmentFormattingWithoutPipes(t *testing.T) {
+func TestEnvironmentSegmentFormatsCountsWithMiddleDots(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	workspace := t.TempDir()
 	writeEnvTestFile(t, filepath.Join(workspace, ".claude", "skills", "demo", "SKILL.md"), "cmd")
 	segment := EnvironmentSegment{Input: protocol.InputData{Workspace: protocol.Workspace{CurrentDir: workspace}}, Settings: config.LoadSettingsSnapshot(workspace)}
 
 	data := segment.Collect()
-	if data == nil || data.Primary != "mem:0 sk:1 mcp:0 plg:0" {
+	if data == nil || data.Primary != "memory 0 · skill 1 · mcp 0 · plugin 0" {
 		t.Fatalf("unexpected primary: %#v", data)
 	}
 }

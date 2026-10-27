@@ -13,10 +13,22 @@ type ContextWindowSegment struct {
 }
 
 func (s ContextWindowSegment) Collect() *SegmentData {
-	contextLimit := s.ModelConfig.GetContextLimit(s.Input.Model.ID)
+	contextWindow := s.Input.ContextWindow
+	var reportedLimit uint32
+	var reportedPercentage *float64
+	var used uint64
+	var hasUsage bool
+	if contextWindow != nil {
+		if contextWindow.ContextWindowSize != nil {
+			reportedLimit = *contextWindow.ContextWindowSize
+		}
+		reportedPercentage = contextWindow.UsedPercentage
+		used, hasUsage = contextWindow.ContextTokens()
+	}
 
-	used, rate, ok := parsePayloadContextWindow(s.Input, contextLimit)
-	if !ok {
+	contextLimit, corrected := s.ModelConfig.ResolveContextLimit(s.Input.Model.ID, reportedLimit)
+	percentage, hasPercentage := contextPercentage(reportedPercentage, used, hasUsage, contextLimit, corrected)
+	if !hasPercentage {
 		return &SegmentData{
 			Primary: "- · - tokens",
 			Metadata: map[string]string{
@@ -28,18 +40,23 @@ func (s ContextWindowSegment) Collect() *SegmentData {
 		}
 	}
 
-	percentageDisplay := fmt.Sprintf("%.1f%%", rate)
-	if rate == float64(uint64(rate)) {
-		percentageDisplay = fmt.Sprintf("%.0f%%", rate)
+	percentageDisplay := fmt.Sprintf("%.1f%%", percentage)
+	if percentage == float64(uint64(percentage)) {
+		percentageDisplay = fmt.Sprintf("%.0f%%", percentage)
 	}
 
-	tokensDisplay := fmt.Sprintf("%d", used)
-	if used >= 1000 {
-		k := float64(used) / 1000.0
-		if k == float64(uint64(k)) {
-			tokensDisplay = fmt.Sprintf("%dk", int(k))
-		} else {
-			tokensDisplay = fmt.Sprintf("%.1fk", k)
+	tokensDisplay := "-"
+	tokensMetadata := "-"
+	if hasUsage {
+		tokensMetadata = fmt.Sprintf("%d", used)
+		tokensDisplay = tokensMetadata
+		if used >= 1000 {
+			k := float64(used) / 1000.0
+			if used%1000 == 0 {
+				tokensDisplay = fmt.Sprintf("%dk", uint64(k))
+			} else {
+				tokensDisplay = fmt.Sprintf("%.1fk", k)
+			}
 		}
 	}
 
@@ -48,21 +65,30 @@ func (s ContextWindowSegment) Collect() *SegmentData {
 		Metadata: map[string]string{
 			"limit":      fmt.Sprintf("%d", contextLimit),
 			"model":      s.Input.Model.ID,
-			"tokens":     fmt.Sprintf("%d", used),
-			"percentage": fmt.Sprintf("%v", rate),
+			"tokens":     tokensMetadata,
+			"percentage": fmt.Sprintf("%v", percentage),
 		},
 	}
 }
 
-func parsePayloadContextWindow(input protocol.InputData, contextLimit uint32) (uint32, float64, bool) {
-	if input.ContextWindow == nil || input.ContextWindow.CurrentUsage == nil || contextLimit == 0 {
-		return 0, 0, false
+func contextPercentage(reported *float64, used uint64, hasUsage bool, limit uint32, corrected bool) (float64, bool) {
+	if reported != nil && validPercentage(*reported) && !corrected {
+		return *reported, true
+	}
+	if hasUsage && limit > 0 {
+		percentage := float64(used) / float64(limit) * 100.0
+		if percentage > 100 {
+			percentage = 100
+		}
+		return percentage, true
+	}
+	if reported != nil && validPercentage(*reported) {
+		return *reported, true
 	}
 
-	used := input.ContextWindow.CurrentUsage.UsedTokens()
-	if used == 0 {
-		return 0, 0, false
-	}
+	return 0, false
+}
 
-	return used, (float64(used) / float64(contextLimit)) * 100.0, true
+func validPercentage(value float64) bool {
+	return value >= 0 && value <= 100
 }

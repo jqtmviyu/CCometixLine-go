@@ -9,23 +9,23 @@ import (
 
 type Config struct {
 	Style    StyleConfig     `toml:"style"`
+	Layout   LayoutConfig    `toml:"layout"`
 	Segments []SegmentConfig `toml:"segments"`
 	Theme    string          `toml:"theme"`
 }
 
-type StyleConfig struct {
-	Mode      StyleMode `toml:"mode"`
-	Separator string    `toml:"separator"`
-	WrapWidth int       `toml:"wrap_width"`
+type LayoutConfig struct {
+	Lines []LayoutLine `toml:"lines"`
+	Task  []SegmentID  `toml:"task"`
 }
 
-type StyleMode string
+type LayoutLine struct {
+	Segments []SegmentID `toml:"segments"`
+}
 
-const (
-	StyleModePlain     StyleMode = "plain"
-	StyleModeNerdFont  StyleMode = "nerd_font"
-	StyleModePowerline StyleMode = "powerline"
-)
+type StyleConfig struct {
+	Separator string `toml:"separator"`
+}
 
 type SegmentConfig struct {
 	ID      SegmentID       `toml:"id"`
@@ -37,8 +37,7 @@ type SegmentConfig struct {
 }
 
 type IconConfig struct {
-	Plain    string `toml:"plain"`
-	NerdFont string `toml:"nerd_font"`
+	Emoji string `toml:"emoji"`
 }
 
 type ColorConfig struct {
@@ -62,14 +61,26 @@ type AnsiColor struct {
 type SegmentID string
 
 const (
-	SegmentModel         SegmentID = "model"
-	SegmentEffort        SegmentID = "effort"
-	SegmentDirectory     SegmentID = "directory"
-	SegmentGit           SegmentID = "git"
-	SegmentContextWindow SegmentID = "context_window"
-	SegmentCost          SegmentID = "cost"
-	SegmentSession       SegmentID = "session"
-	SegmentEnvironment   SegmentID = "environment"
+	SegmentModel            SegmentID = "model"
+	SegmentEffort           SegmentID = "effort"
+	SegmentDirectory        SegmentID = "directory"
+	SegmentGit              SegmentID = "git"
+	SegmentContextWindow    SegmentID = "context_window"
+	SegmentCost             SegmentID = "cost"
+	SegmentSession          SegmentID = "session"
+	SegmentEnvironment      SegmentID = "environment"
+	SegmentContextBreakdown SegmentID = "context.breakdown"
+	SegmentCache            SegmentID = "cache"
+	SegmentCacheColdCost    SegmentID = "cache.cold_cost"
+	SegmentTimingTTFT       SegmentID = "timing.ttft"
+	SegmentTimingTPS        SegmentID = "timing.tps"
+	SegmentActivityTools    SegmentID = "activity.tools"
+	SegmentActivityAgents   SegmentID = "activity.agents"
+	SegmentTaskLabel        SegmentID = "task.label"
+	SegmentTaskName         SegmentID = "task.name"
+	SegmentTaskStatus       SegmentID = "task.status"
+	SegmentTaskElapsed      SegmentID = "task.elapsed"
+	SegmentTaskTrend        SegmentID = "task.trend"
 )
 
 func Load() (Config, error) {
@@ -100,13 +111,21 @@ func ConfigPath() string {
 
 func DefaultConfig() Config {
 	return Config{
-		Style: StyleConfig{
-			Mode:      StyleModePlain,
-			Separator: " | ",
-			WrapWidth: 80,
-		},
+		Style:    StyleConfig{Separator: " | "},
+		Layout:   defaultLayout(),
 		Segments: buildDefaultSegments(),
 		Theme:    "default",
+	}
+}
+
+func defaultLayout() LayoutConfig {
+	return LayoutConfig{
+		Lines: []LayoutLine{
+			{Segments: []SegmentID{SegmentModel, SegmentEffort, SegmentDirectory, SegmentGit, SegmentEnvironment}},
+			{Segments: []SegmentID{SegmentContextWindow, SegmentContextBreakdown, SegmentCache, SegmentCacheColdCost, SegmentCost, SegmentSession, SegmentTimingTTFT, SegmentTimingTPS}},
+			{Segments: []SegmentID{SegmentActivityTools, SegmentActivityAgents}},
+		},
+		Task: []SegmentID{SegmentTaskStatus, SegmentTaskName, SegmentTaskLabel, SegmentTaskElapsed, SegmentTaskTrend},
 	}
 }
 
@@ -152,20 +171,34 @@ func IntOption(options map[string]any, key string, fallback int) int {
 	}
 }
 
-func applyConfigDefaults(cfg *Config) {
-	if cfg.Style.WrapWidth == 0 {
-		cfg.Style.WrapWidth = 80
+func enabledSegmentIDs(segments []SegmentConfig) []SegmentID {
+	ids := make([]SegmentID, 0, len(segments))
+	for _, segment := range segments {
+		if segment.Enabled {
+			ids = append(ids, segment.ID)
+		}
 	}
-	if cfg.Style.Mode == "" {
-		cfg.Style.Mode = StyleModePlain
-	}
+	return ids
+}
 
+func applyConfigDefaults(cfg *Config) {
 	if cfg.Style.Separator == "" {
 		cfg.Style.Separator = " | "
 	}
 
-	if len(cfg.Segments) == 0 {
+	segmentsWereMissing := len(cfg.Segments) == 0
+	if segmentsWereMissing {
 		cfg.Segments = buildDefaultSegments()
+	}
+	if len(cfg.Layout.Lines) == 0 {
+		if segmentsWereMissing {
+			cfg.Layout.Lines = defaultLayout().Lines
+		} else {
+			cfg.Layout.Lines = []LayoutLine{{Segments: enabledSegmentIDs(cfg.Segments)}}
+		}
+	}
+	if cfg.Layout.Task == nil {
+		cfg.Layout.Task = defaultLayout().Task
 	}
 
 	if cfg.Theme == "" {
@@ -184,24 +217,35 @@ func color16(value uint8) *AnsiColor {
 }
 
 type segmentDefaults struct {
-	id       SegmentID
-	enabled  bool
-	plain    string
-	nerdFont string
-	iconC16  uint8
-	textC16  uint8
-	options  map[string]any
+	id      SegmentID
+	enabled bool
+	emoji   string
+	iconC16 uint8
+	textC16 uint8
+	options map[string]any
 }
 
 var defaultSegmentDefs = []segmentDefaults{
-	{SegmentModel, true, "🤖", "\uE26D", 14, 14, nil},
-	{SegmentEffort, true, "🧠", "\uF0A39", 13, 13, nil},
-	{SegmentDirectory, true, "📁", "\uF024B", 11, 10, nil},
-	{SegmentGit, true, "🌿", "\uF02A2", 12, 12, nil},
-	{SegmentContextWindow, true, "⚡️", "\uF49B", 13, 13, nil},
-	{SegmentCost, false, "💰", "\uEEC1", 3, 3, nil},
-	{SegmentSession, false, "⏱️", "\uF19BB", 2, 2, nil},
-	{SegmentEnvironment, true, "🛠️", "\uF0AD", 14, 14, nil},
+	{SegmentModel, true, "🤖", 14, 14, nil},
+	{SegmentEffort, true, "", 13, 13, nil},
+	{SegmentDirectory, true, "📁", 11, 10, nil},
+	{SegmentGit, true, "🐙", 12, 12, nil},
+	{SegmentContextWindow, true, "💿", 13, 13, nil},
+	{SegmentCost, false, "💰", 3, 3, nil},
+	{SegmentSession, false, "⏱️", 2, 2, nil},
+	{SegmentEnvironment, true, "🧰", 14, 14, nil},
+	{SegmentContextBreakdown, true, "🔈", 13, 13, nil},
+	{SegmentCache, true, "🔥", 6, 6, nil},
+	{SegmentCacheColdCost, true, "💲", 3, 3, nil},
+	{SegmentTimingTTFT, true, "⌛", 11, 11, nil},
+	{SegmentTimingTPS, true, "⚡", 14, 14, nil},
+	{SegmentActivityTools, true, "✏️", 12, 12, nil},
+	{SegmentActivityAgents, true, "👥", 14, 14, nil},
+	{SegmentTaskLabel, true, "↳", 11, 11, nil},
+	{SegmentTaskName, true, "👤", 14, 14, nil},
+	{SegmentTaskStatus, true, "", 10, 10, nil},
+	{SegmentTaskElapsed, true, "⏱️", 11, 11, nil},
+	{SegmentTaskTrend, true, "📈", 13, 13, nil},
 }
 
 func buildDefaultSegments() []SegmentConfig {
@@ -214,7 +258,7 @@ func buildDefaultSegments() []SegmentConfig {
 		result[i] = SegmentConfig{
 			ID:      d.id,
 			Enabled: d.enabled,
-			Icon:    IconConfig{Plain: d.plain, NerdFont: d.nerdFont},
+			Icon:    IconConfig{Emoji: d.emoji},
 			Colors:  ColorConfig{Icon: color16(d.iconC16), Text: color16(d.textC16)},
 			Options: opts,
 		}

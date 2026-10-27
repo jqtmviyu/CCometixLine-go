@@ -7,15 +7,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
 type EnvironmentCounts struct {
-	MemoryFiles int
-	MCPs        int
-	Skills      int
-	Plugins     int
+	MemoryFiles int `json:"memory_files"`
+	MCPs        int `json:"mcps"`
+	Skills      int `json:"skills"`
+	Plugins     int `json:"plugins"`
 }
 
 type SettingsSnapshot struct {
@@ -29,34 +30,78 @@ type parsedSettings struct {
 	EffortLevel           string          `json:"effortLevel"`
 }
 
+type settingsSnapshotOptions struct {
+	includeEnvironment bool
+	includeEffort      bool
+	useCache           bool
+}
+
 func LoadSettingsSnapshot(cwd string) SettingsSnapshot {
+	return loadSettingsSnapshotAt(cwd, settingsSnapshotOptions{includeEnvironment: true, includeEffort: true}, time.Now())
+}
+
+func LoadSettingsSnapshotForSegments(cwd string, segmentIDs []SegmentID) SettingsSnapshot {
+	options := settingsSnapshotOptions{useCache: true}
+	for _, id := range segmentIDs {
+		switch id {
+		case SegmentEnvironment:
+			options.includeEnvironment = true
+		case SegmentEffort:
+			options.includeEffort = true
+		}
+	}
+	return loadSettingsSnapshotAt(cwd, options, time.Now())
+}
+
+func loadSettingsSnapshotAt(cwd string, options settingsSnapshotOptions, now time.Time) SettingsSnapshot {
+	if !options.includeEnvironment && !options.includeEffort {
+		return SettingsSnapshot{}
+	}
+
 	claudeDir := ClaudeDir()
 	projectClaudeDir := filepath.Join(cwd, ".claude")
 	projectOverlapsUser := samePath(projectClaudeDir, claudeDir)
-	settingsList := collectSettingsList(claudeDir, projectClaudeDir, projectOverlapsUser)
 
-	memoryFiles := countMemoryFiles(claudeDir, cwd, projectClaudeDir, projectOverlapsUser)
-	mcpNames := collectMCPNames(settingsList)
-	pluginNames := collectPluginNames(settingsList)
-	skills := len(collectSkillNames(claudeDir, cwd))
+	var counts EnvironmentCounts
+	cacheHit := false
+	if options.includeEnvironment && options.useCache {
+		counts, cacheHit = readEnvironmentCache(claudeDir, cwd, now)
+	}
 
-	return SettingsSnapshot{
-		counts: EnvironmentCounts{
-			MemoryFiles: memoryFiles,
-			MCPs:        len(mcpNames),
-			Skills:      skills,
-			Plugins:     len(pluginNames),
-		},
-		configuredLevel: configuredEffortLevel(settingsList),
+	var settingsList []parsedSettings
+	if options.includeEffort || (options.includeEnvironment && !cacheHit) {
+		settingsList = collectSettingsList(claudeDir, projectClaudeDir, projectOverlapsUser)
+	}
+
+	if options.includeEnvironment && !cacheHit {
+		counts = collectEnvironmentCounts(claudeDir, cwd, projectClaudeDir, projectOverlapsUser, settingsList)
+		if options.useCache {
+			writeEnvironmentCache(claudeDir, cwd, counts, now)
+		}
+	}
+
+	snapshot := SettingsSnapshot{counts: counts}
+	if options.includeEffort {
+		snapshot.configuredLevel = configuredEffortLevel(settingsList)
+	}
+	return snapshot
+}
+
+func collectEnvironmentCounts(claudeDir string, cwd string, projectClaudeDir string, projectOverlapsUser bool, settingsList []parsedSettings) EnvironmentCounts {
+	return EnvironmentCounts{
+		MemoryFiles: countMemoryFiles(claudeDir, cwd, projectClaudeDir, projectOverlapsUser),
+		MCPs:        len(collectMCPNames(settingsList)),
+		Skills:      len(collectSkillNames(claudeDir, cwd)),
+		Plugins:     len(collectPluginNames(settingsList)),
 	}
 }
 
 func CountEnvironment(cwd string) EnvironmentCounts {
-	return LoadSettingsSnapshot(cwd).EnvironmentCounts()
+	return LoadSettingsSnapshotForSegments(cwd, []SegmentID{SegmentEnvironment}).EnvironmentCounts()
 }
 
 func ConfiguredEffortLevel(cwd string) string {
-	return LoadSettingsSnapshot(cwd).ConfiguredEffortLevel()
+	return LoadSettingsSnapshotForSegments(cwd, []SegmentID{SegmentEffort}).ConfiguredEffortLevel()
 }
 
 func (s SettingsSnapshot) EnvironmentCounts() EnvironmentCounts {
@@ -132,10 +177,27 @@ func collectPluginNames(settingsList []parsedSettings) map[string]struct{} {
 }
 
 func collectSkillNames(claudeDir string, cwd string) map[string]struct{} {
-	return mergePathNameSets([]string{
+	return mergePathNameSets(uniquePaths([]string{
 		filepath.Join(claudeDir, "skills"),
 		filepath.Join(cwd, ".claude", "skills"),
-	}, callableSkillNames)
+	}), callableSkillNames)
+}
+
+func uniquePaths(paths []string) []string {
+	unique := make([]string, 0, len(paths))
+	for _, path := range paths {
+		duplicate := false
+		for _, existing := range unique {
+			if samePath(path, existing) {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			unique = append(unique, path)
+		}
+	}
+	return unique
 }
 
 func mergeNameSets(settingsList []parsedSettings, names func(parsedSettings) map[string]struct{}) map[string]struct{} {

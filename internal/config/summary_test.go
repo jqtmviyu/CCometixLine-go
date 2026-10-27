@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestCountEnvironmentCountsMemoryMCPPluginsAndSkills(t *testing.T) {
@@ -13,7 +14,7 @@ func TestCountEnvironmentCountsMemoryMCPPluginsAndSkills(t *testing.T) {
 	if err := os.MkdirAll(project, 0755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	setClaudeConfigDir(t, home)
 
 	writeFile(t, filepath.Join(home, "CLAUDE.md"), "global")
 	writeFile(t, filepath.Join(home, "rules", "a.md"), "rule")
@@ -63,7 +64,7 @@ func TestCountEnvironmentCountsMemoryMCPPluginsAndSkills(t *testing.T) {
 
 func TestCountEnvironmentAvoidsOverlappingClaudeDirDoubleCount(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	setClaudeConfigDir(t, home)
 	writeFile(t, filepath.Join(home, "CLAUDE.md"), "global")
 	writeFile(t, filepath.Join(home, "rules", "a.md"), "rule")
 
@@ -73,13 +74,83 @@ func TestCountEnvironmentAvoidsOverlappingClaudeDirDoubleCount(t *testing.T) {
 	}
 }
 
+func TestEnvironmentCacheRefreshesAfterTTLAndKeepsEffortCurrent(t *testing.T) {
+	home := t.TempDir()
+	project := filepath.Join(t.TempDir(), "project")
+	setClaudeConfigDir(t, home)
+	writeFile(t, filepath.Join(home, "CLAUDE.md"), "global")
+	writeFile(t, filepath.Join(home, "skills", "first", "SKILL.md"), "skill")
+	writeJSON(t, filepath.Join(home, "settings.json"), map[string]any{
+		"effortLevel":           "low",
+		"enabledMcpjsonServers": []any{"mcp-a", "mcp-b"},
+		"enabledPlugins":        map[string]bool{"plugin-a": true, "plugin-b": true},
+	})
+
+	now := time.Now().Truncate(time.Second)
+	first := loadSettingsSnapshotAt(project, settingsSnapshotOptions{includeEnvironment: true, includeEffort: true, useCache: true}, now)
+	if first.EnvironmentCounts() != (EnvironmentCounts{MemoryFiles: 1, MCPs: 2, Skills: 1, Plugins: 2}) || first.ConfiguredEffortLevel() != "low" {
+		t.Fatalf("unexpected initial snapshot: %#v", first)
+	}
+
+	writeFile(t, filepath.Join(project, "CLAUDE.md"), "project")
+	writeFile(t, filepath.Join(home, "skills", "second", "SKILL.md"), "skill")
+	writeJSON(t, filepath.Join(home, "settings.json"), map[string]any{
+		"effortLevel":           "high",
+		"enabledMcpjsonServers": []any{"mcp-a"},
+		"enabledPlugins":        map[string]bool{"plugin-a": true},
+	})
+
+	cached := loadSettingsSnapshotAt(project, settingsSnapshotOptions{includeEnvironment: true, includeEffort: true, useCache: true}, now.Add(environmentCacheTTL-time.Second))
+	if cached.EnvironmentCounts() != first.EnvironmentCounts() || cached.ConfiguredEffortLevel() != "high" {
+		t.Fatalf("cache should retain counts while effort stays fresh: %#v", cached)
+	}
+
+	refreshed := loadSettingsSnapshotAt(project, settingsSnapshotOptions{includeEnvironment: true, includeEffort: true, useCache: true}, now.Add(environmentCacheTTL+time.Second))
+	if refreshed.EnvironmentCounts() != (EnvironmentCounts{MemoryFiles: 2, MCPs: 1, Skills: 2, Plugins: 1}) || refreshed.ConfiguredEffortLevel() != "high" {
+		t.Fatalf("unexpected refreshed snapshot: %#v", refreshed)
+	}
+}
+
+func TestEnvironmentCacheSeparatesConfigAndWorkingDirectory(t *testing.T) {
+	sharedBridgeDir := t.TempDir()
+	homeA := t.TempDir()
+	homeB := t.TempDir()
+	projectA := filepath.Join(t.TempDir(), "project-a")
+	projectB := filepath.Join(t.TempDir(), "project-b")
+	t.Setenv("CCLINE_BRIDGE_DIR", sharedBridgeDir)
+	writeFile(t, filepath.Join(homeA, "CLAUDE.md"), "home-a")
+	writeFile(t, filepath.Join(projectB, "CLAUDE.md"), "project-b")
+	now := time.Now().Truncate(time.Second)
+
+	t.Setenv("CLAUDE_CONFIG_DIR", homeA)
+	countsA := loadSettingsSnapshotAt(projectA, settingsSnapshotOptions{includeEnvironment: true, useCache: true}, now).EnvironmentCounts()
+	t.Setenv("CLAUDE_CONFIG_DIR", homeB)
+	countsB := loadSettingsSnapshotAt(projectA, settingsSnapshotOptions{includeEnvironment: true, useCache: true}, now).EnvironmentCounts()
+	projectCounts := loadSettingsSnapshotAt(projectB, settingsSnapshotOptions{includeEnvironment: true, useCache: true}, now).EnvironmentCounts()
+
+	if countsA.MemoryFiles != 1 || countsB.MemoryFiles != 0 || projectCounts.MemoryFiles != 1 {
+		t.Fatalf("cache scope mixed config or working directories: A=%#v B=%#v project=%#v", countsA, countsB, projectCounts)
+	}
+}
+
+func TestUniquePathsDeduplicatesSymlinkAliases(t *testing.T) {
+	root := t.TempDir()
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(root, alias); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if paths := uniquePaths([]string{root, alias}); len(paths) != 1 {
+		t.Fatalf("expected one unique path, got %#v", paths)
+	}
+}
+
 func TestCountEnvironmentSkillsDoNotDependOnPluginState(t *testing.T) {
 	home := t.TempDir()
 	project := filepath.Join(t.TempDir(), "project")
 	if err := os.MkdirAll(project, 0755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	setClaudeConfigDir(t, home)
 
 	writeFile(t, filepath.Join(home, "skills", "user-skill", "SKILL.md"), "cmd")
 	writeFile(t, filepath.Join(home, "skills", "root.md"), "cmd")
@@ -101,7 +172,7 @@ func TestCountEnvironmentSkillsDoNotDependOnPluginState(t *testing.T) {
 
 func TestCountEnvironmentIncludesSymlinkedUserSkill(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	setClaudeConfigDir(t, home)
 	target := t.TempDir()
 	writeFile(t, filepath.Join(target, "SKILL.md"), "skill")
 	if err := os.MkdirAll(filepath.Join(home, "skills"), 0755); err != nil {
@@ -118,7 +189,7 @@ func TestCountEnvironmentIncludesSymlinkedUserSkill(t *testing.T) {
 func TestCountEnvironmentFiltersModelDisabledSkills(t *testing.T) {
 	home := t.TempDir()
 	project := t.TempDir()
-	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	setClaudeConfigDir(t, home)
 	for _, root := range []string{home, filepath.Join(project, ".claude")} {
 		writeFile(t, filepath.Join(root, "skills", "disabled", "SKILL.md"), "---\ndisable-model-invocation: true # manual only\n---\nBody")
 		writeFile(t, filepath.Join(root, "skills", "enabled", "SKILL.md"), "---\ndisable-model-invocation: false\n---\nBody")
@@ -138,7 +209,7 @@ func TestCountEnvironmentFiltersModelDisabledSkills(t *testing.T) {
 
 func TestConfiguredEffortLevelUsesUserSettings(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	setClaudeConfigDir(t, home)
 	writeJSON(t, filepath.Join(home, "settings.json"), map[string]any{"effortLevel": "low"})
 
 	level := ConfiguredEffortLevel(filepath.Join(t.TempDir(), "project"))
@@ -150,7 +221,7 @@ func TestConfiguredEffortLevelUsesUserSettings(t *testing.T) {
 func TestConfiguredEffortLevelProjectOverridesUser(t *testing.T) {
 	home := t.TempDir()
 	project := filepath.Join(t.TempDir(), "project")
-	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	setClaudeConfigDir(t, home)
 	writeJSON(t, filepath.Join(home, "settings.json"), map[string]any{"effortLevel": "low"})
 	writeJSON(t, filepath.Join(project, ".claude", "settings.json"), map[string]any{"effortLevel": "high"})
 
@@ -163,7 +234,7 @@ func TestConfiguredEffortLevelProjectOverridesUser(t *testing.T) {
 func TestConfiguredEffortLevelLocalOverridesProject(t *testing.T) {
 	home := t.TempDir()
 	project := filepath.Join(t.TempDir(), "project")
-	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	setClaudeConfigDir(t, home)
 	writeJSON(t, filepath.Join(project, ".claude", "settings.json"), map[string]any{"effortLevel": "medium"})
 	writeJSON(t, filepath.Join(project, ".claude", "settings.local.json"), map[string]any{"effortLevel": "xhigh"})
 
@@ -176,7 +247,7 @@ func TestConfiguredEffortLevelLocalOverridesProject(t *testing.T) {
 func TestConfiguredEffortLevelIgnoresInvalidJSON(t *testing.T) {
 	home := t.TempDir()
 	project := filepath.Join(t.TempDir(), "project")
-	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	setClaudeConfigDir(t, home)
 	writeFile(t, filepath.Join(home, "settings.json"), "{")
 	writeJSON(t, filepath.Join(project, ".claude", "settings.json"), map[string]any{"effortLevel": "high"})
 
@@ -189,7 +260,7 @@ func TestConfiguredEffortLevelIgnoresInvalidJSON(t *testing.T) {
 func TestConfiguredEffortLevelIgnoresWhitespace(t *testing.T) {
 	home := t.TempDir()
 	project := filepath.Join(t.TempDir(), "project")
-	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	setClaudeConfigDir(t, home)
 	writeJSON(t, filepath.Join(home, "settings.json"), map[string]any{"effortLevel": "   "})
 	writeJSON(t, filepath.Join(project, ".claude", "settings.json"), map[string]any{"effortLevel": "high"})
 
@@ -201,7 +272,7 @@ func TestConfiguredEffortLevelIgnoresWhitespace(t *testing.T) {
 
 func TestConfiguredEffortLevelAvoidsOverlappingClaudeDirDoubleRead(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	setClaudeConfigDir(t, home)
 	writeJSON(t, filepath.Join(home, "settings.json"), map[string]any{"effortLevel": "medium"})
 	writeJSON(t, filepath.Join(home, ".claude", "settings.local.json"), map[string]any{"effortLevel": "high"})
 
@@ -209,6 +280,12 @@ func TestConfiguredEffortLevelAvoidsOverlappingClaudeDirDoubleRead(t *testing.T)
 	if level != "high" {
 		t.Fatalf("expected overlapping local effort high, got %q", level)
 	}
+}
+
+func setClaudeConfigDir(t *testing.T, path string) {
+	t.Helper()
+	t.Setenv("CLAUDE_CONFIG_DIR", path)
+	t.Setenv("CCLINE_BRIDGE_DIR", filepath.Join(path, "ccline", "bridge"))
 }
 
 func writeFile(t *testing.T, path string, content string) {

@@ -65,11 +65,3 @@ func ApplyBackgroundColor(color *config.AnsiColor) string {
 	}
 	return fmt.Sprintf("\x1b[%sm", code)
 }
-
-func ColorToForegroundCode(color *config.AnsiColor) string {
-	code := colorCode(color, 30)
-	if code == "" {
-		return ""
-	}
-	return fmt.Sprintf("\x1b[%sm", code)
-}
