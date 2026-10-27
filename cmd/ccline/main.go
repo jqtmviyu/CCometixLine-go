@@ -70,9 +70,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, terminal bool
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	generator := render.StatusLineGenerator{Config: cfg}
+	layout := cfg.ResolveLayout()
+	generator := render.StatusLineGenerator{Style: cfg.Style, Layout: layout}
 	if isTaskInput {
-		if err := writeTaskLines(stdout, generator, cfg, *taskInput, time.Now()); err != nil {
+		if err := writeTaskLines(stdout, generator, *taskInput, time.Now()); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
@@ -85,15 +86,16 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, terminal bool
 		return 1
 	}
 	modelConfig := config.LoadModelConfig()
-	collected := segments.CollectAll(cfg, modelConfig, input)
+	collector := segments.Collector{Layout: layout, Cache: cfg.Cache, Models: modelConfig}
+	collected := collector.Collect(input)
 	fmt.Fprintln(stdout, generator.Generate(collected))
 	return 0
 }
 
-func writeTaskLines(writer io.Writer, generator render.StatusLineGenerator, cfg config.Config, input protocol.SubagentInput, now time.Time) error {
+func writeTaskLines(writer io.Writer, generator render.StatusLineGenerator, input protocol.SubagentInput, now time.Time) error {
 	encoder := json.NewEncoder(writer)
 	for _, task := range input.Tasks {
-		items := segments.CollectTask(cfg, task, now)
+		items := segments.CollectTask(generator.Layout.Task, task, now)
 		content := generator.GenerateTaskLine(items, input.Columns)
 		if content == "" {
 			continue

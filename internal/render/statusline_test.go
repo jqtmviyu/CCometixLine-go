@@ -27,7 +27,7 @@ func TestGenerateDoesNotWrapConfiguredLine(t *testing.T) {
 				{Config: config.SegmentConfig{ID: config.SegmentContextWindow, Icon: config.IconConfig{Emoji: "⚡️"}}, Data: segments.SegmentData{Primary: "very-long-context-value"}},
 				{Config: config.SegmentConfig{ID: config.SegmentEnvironment, Icon: config.IconConfig{Emoji: "🧰"}}, Data: segments.SegmentData{Primary: "memory 1 · skill 0 · mcp 0 · plugin 0"}},
 			}
-			result := ansi.Strip((StatusLineGenerator{Config: cfg}).Generate(items))
+			result := ansi.Strip((StatusLineGenerator{Style: cfg.Style, Layout: cfg.ResolveLayout()}).Generate(items))
 			if strings.Contains(result, "\n") {
 				t.Fatalf("configured single line was wrapped: %q", result)
 			}
@@ -52,7 +52,7 @@ func TestGenerateRespectsExplicitThreeLineLayout(t *testing.T) {
 		{Config: config.SegmentConfig{ID: config.SegmentCost}, Data: segments.SegmentData{Primary: "hidden"}},
 	}
 
-	result := ansi.Strip((StatusLineGenerator{Config: cfg}).Generate(items))
+	result := ansi.Strip((StatusLineGenerator{Style: cfg.Style, Layout: cfg.ResolveLayout()}).Generate(items))
 	lines := strings.Split(result, "\n")
 	if len(lines) != 3 || lines[0] != "model" || lines[1] != "directory" || lines[2] != "environment" {
 		t.Fatalf("unexpected configured lines: %#v", lines)
@@ -65,7 +65,7 @@ func TestGenerateTaskLineStillTruncatesToColumns(t *testing.T) {
 		Config: config.SegmentConfig{ID: config.SegmentTaskName, Icon: config.IconConfig{Emoji: "↳"}},
 		Data:   segments.SegmentData{Primary: "a-very-long-task-name"},
 	}}
-	result := (StatusLineGenerator{Config: cfg}).GenerateTaskLine(items, 8)
+	result := (StatusLineGenerator{Style: cfg.Style, Layout: cfg.ResolveLayout()}).GenerateTaskLine(items, 8)
 	if ansi.StringWidth(result) > 8 || !strings.HasSuffix(ansi.Strip(result), "…") {
 		t.Fatalf("task line was not truncated to columns: %q", result)
 	}
@@ -125,7 +125,7 @@ func TestGenerateUsesMiddleDotForAdjacentModelAndEffort(t *testing.T) {
 				}
 			}
 
-			got := ansi.Strip((StatusLineGenerator{Config: cfg}).Generate(items))
+			got := ansi.Strip((StatusLineGenerator{Style: cfg.Style, Layout: cfg.ResolveLayout()}).Generate(items))
 			if got != test.want {
 				t.Fatalf("unexpected separators: got %q, want %q", got, test.want)
 			}
@@ -163,7 +163,7 @@ func TestGenerateUsesDefaultEmojiIcons(t *testing.T) {
 		})
 	}
 
-	got := ansi.Strip((StatusLineGenerator{Config: cfg}).Generate(items))
+	got := ansi.Strip((StatusLineGenerator{Style: cfg.Style, Layout: cfg.ResolveLayout()}).Generate(items))
 	want := "🤖 Sonnet · high | 🐙 main | 💿 62% · 124k tokens | 🔥 warm 4m"
 	if got != want {
 		t.Fatalf("unexpected emoji status line: got %q, want %q", got, want)
@@ -206,8 +206,8 @@ func TestGenerateStatusLine(t *testing.T) {
 		},
 	}
 
-	items := segments.CollectAll(cfg, config.LoadModelConfig(), input)
-	result := StatusLineGenerator{Config: cfg}.Generate(items)
+	items := (segments.Collector{Layout: cfg.ResolveLayout(), Cache: cfg.Cache, Models: config.LoadModelConfig()}).Collect(input)
+	result := StatusLineGenerator{Style: cfg.Style, Layout: cfg.ResolveLayout()}.Generate(items)
 
 	checks := []string{"Sonnet 4.5", "high", "CCometixLine-go", "0.8% · 1.6k tokens", "$0.02", "1m31s", "memory ", "skill ", "mcp ", "plugin "}
 	for _, check := range checks {
@@ -252,7 +252,7 @@ func TestModelEffortPairSharesModelStyle(t *testing.T) {
 		}
 		texts := map[config.SegmentID]string{config.SegmentModel: "Sonnet", config.SegmentEffort: "high"}
 		want := ApplyStyle(texts[ids[0]], model.Colors.Text, true) + ApplyStyle(" · ", model.Colors.Text, true) + ApplyStyle(texts[ids[1]], model.Colors.Text, true)
-		if got := (StatusLineGenerator{Config: cfg}).Generate(items); got != want {
+		if got := (StatusLineGenerator{Style: cfg.Style, Layout: cfg.ResolveLayout()}).Generate(items); got != want {
 			t.Fatalf("model, separator and effort should share style: got %q, want %q", got, want)
 		}
 	}

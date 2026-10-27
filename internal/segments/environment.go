@@ -3,17 +3,13 @@ package segments
 import (
 	"fmt"
 
-	"ccometixline-go/internal/config"
-	"ccometixline-go/internal/protocol"
+	"ccometixline-go/internal/observation"
 )
 
-type EnvironmentSegment struct {
-	Input    protocol.InputData
-	Settings config.SettingsSnapshot
-}
+type EnvironmentSegment struct{ Counts observation.EnvironmentCounts }
 
 func (s EnvironmentSegment) Collect() *SegmentData {
-	counts := s.Settings.EnvironmentCounts()
+	counts := s.Counts
 	if counts.MemoryFiles == 0 && counts.MCPs == 0 && counts.Skills == 0 && counts.Plugins == 0 {
 		return nil
 	}

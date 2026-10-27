@@ -1,4 +1,4 @@
-package config
+package observation
 
 import (
 	"encoding/json"
@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 )
+
+const environmentCacheTTL = time.Minute
 
 func TestCountEnvironmentCountsMemoryMCPPluginsAndSkills(t *testing.T) {
 	home := t.TempDir()
@@ -47,7 +49,7 @@ func TestCountEnvironmentCountsMemoryMCPPluginsAndSkills(t *testing.T) {
 	writeFile(t, filepath.Join(project, ".claude", "skills", "user-skill", "SKILL.md"), "cmd")
 	writeFile(t, filepath.Join(project, ".claude", "skills", "project-skill", "SKILL.md"), "cmd")
 
-	counts := CountEnvironment(project)
+	counts := countEnvironment(project)
 	if counts.MemoryFiles != 7 {
 		t.Fatalf("expected 7 memory files, got %d", counts.MemoryFiles)
 	}
@@ -68,7 +70,7 @@ func TestCountEnvironmentAvoidsOverlappingClaudeDirDoubleCount(t *testing.T) {
 	writeFile(t, filepath.Join(home, "CLAUDE.md"), "global")
 	writeFile(t, filepath.Join(home, "rules", "a.md"), "rule")
 
-	counts := CountEnvironment(home)
+	counts := countEnvironment(home)
 	if counts.MemoryFiles != 2 {
 		t.Fatalf("expected 2 memory files, got %d", counts.MemoryFiles)
 	}
@@ -87,8 +89,8 @@ func TestEnvironmentCacheRefreshesAfterTTLAndKeepsEffortCurrent(t *testing.T) {
 	})
 
 	now := time.Now().Truncate(time.Second)
-	first := loadSettingsSnapshotAt(project, settingsSnapshotOptions{includeEnvironment: true, includeEffort: true, useCache: true}, now)
-	if first.EnvironmentCounts() != (EnvironmentCounts{MemoryFiles: 1, MCPs: 2, Skills: 1, Plugins: 2}) || first.ConfiguredEffortLevel() != "low" {
+	first := readAt(Request{CWD: project, Environment: true, Effort: true, CacheTTL: environmentCacheTTL}, now)
+	if first.Environment != (EnvironmentCounts{MemoryFiles: 1, MCPs: 2, Skills: 1, Plugins: 2}) || first.Effort != "low" {
 		t.Fatalf("unexpected initial snapshot: %#v", first)
 	}
 
@@ -100,13 +102,13 @@ func TestEnvironmentCacheRefreshesAfterTTLAndKeepsEffortCurrent(t *testing.T) {
 		"enabledPlugins":        map[string]bool{"plugin-a": true},
 	})
 
-	cached := loadSettingsSnapshotAt(project, settingsSnapshotOptions{includeEnvironment: true, includeEffort: true, useCache: true}, now.Add(environmentCacheTTL-time.Second))
-	if cached.EnvironmentCounts() != first.EnvironmentCounts() || cached.ConfiguredEffortLevel() != "high" {
+	cached := readAt(Request{CWD: project, Environment: true, Effort: true, CacheTTL: environmentCacheTTL}, now.Add(environmentCacheTTL-time.Second))
+	if cached.Environment != first.Environment || cached.Effort != "high" {
 		t.Fatalf("cache should retain counts while effort stays fresh: %#v", cached)
 	}
 
-	refreshed := loadSettingsSnapshotAt(project, settingsSnapshotOptions{includeEnvironment: true, includeEffort: true, useCache: true}, now.Add(environmentCacheTTL+time.Second))
-	if refreshed.EnvironmentCounts() != (EnvironmentCounts{MemoryFiles: 2, MCPs: 1, Skills: 2, Plugins: 1}) || refreshed.ConfiguredEffortLevel() != "high" {
+	refreshed := readAt(Request{CWD: project, Environment: true, Effort: true, CacheTTL: environmentCacheTTL}, now.Add(environmentCacheTTL+time.Second))
+	if refreshed.Environment != (EnvironmentCounts{MemoryFiles: 2, MCPs: 1, Skills: 2, Plugins: 1}) || refreshed.Effort != "high" {
 		t.Fatalf("unexpected refreshed snapshot: %#v", refreshed)
 	}
 }
@@ -123,10 +125,10 @@ func TestEnvironmentCacheSeparatesConfigAndWorkingDirectory(t *testing.T) {
 	now := time.Now().Truncate(time.Second)
 
 	t.Setenv("CLAUDE_CONFIG_DIR", homeA)
-	countsA := loadSettingsSnapshotAt(projectA, settingsSnapshotOptions{includeEnvironment: true, useCache: true}, now).EnvironmentCounts()
+	countsA := readAt(Request{CWD: projectA, Environment: true, CacheTTL: environmentCacheTTL}, now).Environment
 	t.Setenv("CLAUDE_CONFIG_DIR", homeB)
-	countsB := loadSettingsSnapshotAt(projectA, settingsSnapshotOptions{includeEnvironment: true, useCache: true}, now).EnvironmentCounts()
-	projectCounts := loadSettingsSnapshotAt(projectB, settingsSnapshotOptions{includeEnvironment: true, useCache: true}, now).EnvironmentCounts()
+	countsB := readAt(Request{CWD: projectA, Environment: true, CacheTTL: environmentCacheTTL}, now).Environment
+	projectCounts := readAt(Request{CWD: projectB, Environment: true, CacheTTL: environmentCacheTTL}, now).Environment
 
 	if countsA.MemoryFiles != 1 || countsB.MemoryFiles != 0 || projectCounts.MemoryFiles != 1 {
 		t.Fatalf("cache scope mixed config or working directories: A=%#v B=%#v project=%#v", countsA, countsB, projectCounts)
@@ -158,7 +160,7 @@ func TestCountEnvironmentSkillsDoNotDependOnPluginState(t *testing.T) {
 	writeFile(t, filepath.Join(project, ".claude", "skills", "project-skill", "two.md"), "cmd")
 	writeFile(t, filepath.Join(project, ".claude", "skills", "ignored.md"), "cmd")
 
-	counts := CountEnvironment(project)
+	counts := countEnvironment(project)
 	if counts.Skills != 2 {
 		t.Fatalf("expected deduplicated skills=2, got %d", counts.Skills)
 	}
@@ -181,7 +183,7 @@ func TestCountEnvironmentIncludesSymlinkedUserSkill(t *testing.T) {
 	if err := os.Symlink(target, filepath.Join(home, "skills", "linked-skill")); err != nil {
 		t.Fatal(err)
 	}
-	if counts := CountEnvironment(t.TempDir()); counts.Skills != 1 {
+	if counts := countEnvironment(t.TempDir()); counts.Skills != 1 {
 		t.Fatalf("expected 1 symlinked user skill, got %d", counts.Skills)
 	}
 }
@@ -202,7 +204,7 @@ func TestCountEnvironmentFiltersModelDisabledSkills(t *testing.T) {
 	if err := os.Symlink(target, filepath.Join(home, "skills", "linked-disabled")); err != nil {
 		t.Fatal(err)
 	}
-	if counts := CountEnvironment(project); counts.Skills != 3 {
+	if counts := countEnvironment(project); counts.Skills != 3 {
 		t.Fatalf("expected 3 callable skills after filtering and deduplication, got %d", counts.Skills)
 	}
 }
@@ -212,7 +214,7 @@ func TestConfiguredEffortLevelUsesUserSettings(t *testing.T) {
 	setClaudeConfigDir(t, home)
 	writeJSON(t, filepath.Join(home, "settings.json"), map[string]any{"effortLevel": "low"})
 
-	level := ConfiguredEffortLevel(filepath.Join(t.TempDir(), "project"))
+	level := configuredEffort(filepath.Join(t.TempDir(), "project"))
 	if level != "low" {
 		t.Fatalf("expected user effort low, got %q", level)
 	}
@@ -225,7 +227,7 @@ func TestConfiguredEffortLevelProjectOverridesUser(t *testing.T) {
 	writeJSON(t, filepath.Join(home, "settings.json"), map[string]any{"effortLevel": "low"})
 	writeJSON(t, filepath.Join(project, ".claude", "settings.json"), map[string]any{"effortLevel": "high"})
 
-	level := ConfiguredEffortLevel(project)
+	level := configuredEffort(project)
 	if level != "high" {
 		t.Fatalf("expected project effort high, got %q", level)
 	}
@@ -238,7 +240,7 @@ func TestConfiguredEffortLevelLocalOverridesProject(t *testing.T) {
 	writeJSON(t, filepath.Join(project, ".claude", "settings.json"), map[string]any{"effortLevel": "medium"})
 	writeJSON(t, filepath.Join(project, ".claude", "settings.local.json"), map[string]any{"effortLevel": "xhigh"})
 
-	level := ConfiguredEffortLevel(project)
+	level := configuredEffort(project)
 	if level != "xhigh" {
 		t.Fatalf("expected local effort xhigh, got %q", level)
 	}
@@ -251,7 +253,7 @@ func TestConfiguredEffortLevelIgnoresInvalidJSON(t *testing.T) {
 	writeFile(t, filepath.Join(home, "settings.json"), "{")
 	writeJSON(t, filepath.Join(project, ".claude", "settings.json"), map[string]any{"effortLevel": "high"})
 
-	level := ConfiguredEffortLevel(project)
+	level := configuredEffort(project)
 	if level != "high" {
 		t.Fatalf("expected project effort high after invalid user json, got %q", level)
 	}
@@ -264,7 +266,7 @@ func TestConfiguredEffortLevelIgnoresWhitespace(t *testing.T) {
 	writeJSON(t, filepath.Join(home, "settings.json"), map[string]any{"effortLevel": "   "})
 	writeJSON(t, filepath.Join(project, ".claude", "settings.json"), map[string]any{"effortLevel": "high"})
 
-	level := ConfiguredEffortLevel(project)
+	level := configuredEffort(project)
 	if level != "high" {
 		t.Fatalf("expected fallback project effort high, got %q", level)
 	}
@@ -276,7 +278,7 @@ func TestConfiguredEffortLevelAvoidsOverlappingClaudeDirDoubleRead(t *testing.T)
 	writeJSON(t, filepath.Join(home, "settings.json"), map[string]any{"effortLevel": "medium"})
 	writeJSON(t, filepath.Join(home, ".claude", "settings.local.json"), map[string]any{"effortLevel": "high"})
 
-	level := ConfiguredEffortLevel(home)
+	level := configuredEffort(home)
 	if level != "high" {
 		t.Fatalf("expected overlapping local effort high, got %q", level)
 	}
@@ -285,6 +287,7 @@ func TestConfiguredEffortLevelAvoidsOverlappingClaudeDirDoubleRead(t *testing.T)
 func setClaudeConfigDir(t *testing.T, path string) {
 	t.Helper()
 	t.Setenv("CLAUDE_CONFIG_DIR", path)
+	t.Setenv("CLAUDE_CODE_EFFORT_LEVEL", "")
 	t.Setenv("CCLINE_CACHE_DIR", filepath.Join(path, "ccline", "cache"))
 }
 
@@ -313,17 +316,25 @@ func TestEnvironmentCacheUsesConfiguredTTLAndCanBeDisabled(t *testing.T) {
 	cwd := t.TempDir()
 	now := time.Now().Truncate(time.Second)
 	ttl := 2 * time.Minute
-	options := settingsSnapshotOptions{includeEnvironment: true, useCache: true, cacheTTL: ttl}
-	first := loadSettingsSnapshotAt(cwd, options, now)
+	request := Request{CWD: cwd, Environment: true, CacheTTL: ttl}
+	first := readAt(request, now)
 	writeFile(t, filepath.Join(cwd, "CLAUDE.md"), "memory")
-	if got := loadSettingsSnapshotAt(cwd, options, now.Add(time.Minute)); got.EnvironmentCounts() != first.EnvironmentCounts() {
+	if got := readAt(request, now.Add(time.Minute)); got.Environment != first.Environment {
 		t.Fatalf("custom TTL should preserve cached counts: %#v", got)
 	}
-	if got := loadSettingsSnapshotAt(cwd, options, now.Add(ttl)); got.EnvironmentCounts().MemoryFiles != 1 {
+	if got := readAt(request, now.Add(ttl)); got.Environment.MemoryFiles != 1 {
 		t.Fatalf("counts should refresh at the configured TTL: %#v", got)
 	}
 	writeFile(t, filepath.Join(cwd, "CLAUDE.local.md"), "local memory")
-	if got := LoadSettingsSnapshotWithCache(cwd, []SegmentID{SegmentEnvironment}, 0); got.EnvironmentCounts().MemoryFiles != 2 {
+	if got := Read(Request{CWD: cwd, Environment: true}); got.Environment.MemoryFiles != 2 {
 		t.Fatalf("zero TTL should collect current counts: %#v", got)
 	}
+}
+
+func countEnvironment(cwd string) EnvironmentCounts {
+	return Read(Request{CWD: cwd, Environment: true, CacheTTL: environmentCacheTTL}).Environment
+}
+
+func configuredEffort(cwd string) string {
+	return Read(Request{CWD: cwd, Effort: true}).Effort
 }

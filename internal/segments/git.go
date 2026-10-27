@@ -3,9 +3,6 @@ package segments
 import (
 	"os/exec"
 	"strings"
-	"time"
-
-	"ccometixline-go/internal/protocol"
 )
 
 type GitInfo struct {
@@ -21,17 +18,13 @@ const (
 	GitStatusConflicts GitStatus = "Conflicts"
 )
 
-type GitSegment struct {
-	Input    protocol.InputData
-	CacheTTL time.Duration
-}
+type GitSegment struct{ Info *GitInfo }
 
 func (s GitSegment) Collect() *SegmentData {
-	info, ok := getCachedGitInfo(s.Input.Workspace.CurrentDir, s.CacheTTL, time.Now())
-	if !ok {
+	if s.Info == nil {
 		return nil
 	}
-
+	info := *s.Info
 	metadata := map[string]string{
 		"branch": info.Branch,
 		"status": string(info.Status),

@@ -119,7 +119,6 @@ func TestConfigLoadsFixedMultiLineLayout(t *testing.T) {
 	contents := `
 [style]
 separator = " | "
-wrap_width = 88
 
 [[layout.lines]]
 segments = ["model", "git"]
@@ -181,28 +180,6 @@ func TestExampleConfigLoadsAllMetricLines(t *testing.T) {
 	}
 	if !reflect.DeepEqual(cfg.Layout.Lines, DefaultConfig().Layout.Lines) {
 		t.Fatalf("unexpected example layout: %#v", cfg.Layout.Lines)
-	}
-}
-
-func TestConfigLegacyGoSegmentOrderBecomesOneLine(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.toml")
-	contents := `[[segments]]
-id = "model"
-enabled = true
-[[segments]]
-id = "git"
-enabled = true
-`
-	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	cfg, err := LoadFromPath(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(cfg.Layout.Lines) != 1 || len(cfg.Layout.Lines[0].Segments) != 2 {
-		t.Fatalf("expected legacy segment list preserved as one line, got %#v", cfg.Layout)
 	}
 }
 

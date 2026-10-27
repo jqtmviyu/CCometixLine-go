@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"ccometixline-go/internal/config"
 	"ccometixline-go/internal/protocol"
 )
 
 func TestGitSegmentReturnsNilOutsideRepo(t *testing.T) {
-	segment := GitSegment{Input: protocol.InputData{Workspace: protocol.Workspace{CurrentDir: t.TempDir()}}}
-	if data := segment.Collect(); data != nil {
+	if data := collectGit(t.TempDir()); data != nil {
 		t.Fatal("expected nil outside git repo")
 	}
 }
@@ -111,7 +111,7 @@ func TestGitSegmentCollectsCleanRepo(t *testing.T) {
 	runGitCmd(t, dir, "add", "file.txt")
 	runGitCmd(t, dir, "commit", "-m", "init")
 
-	data := (GitSegment{Input: protocol.InputData{Workspace: protocol.Workspace{CurrentDir: dir}}}).Collect()
+	data := collectGit(dir)
 	if data == nil || !strings.Contains(data.Secondary, "✓") {
 		t.Fatalf("expected clean repo, got %#v", data)
 	}
@@ -138,8 +138,7 @@ func TestGitSegmentCollectsDirtyRepo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	segment := GitSegment{Input: protocol.InputData{Workspace: protocol.Workspace{CurrentDir: dir}}}
-	data := segment.Collect()
+	data := collectGit(dir)
 	if data == nil {
 		t.Fatal("expected git data")
 	}
@@ -210,4 +209,15 @@ func TestGitCacheRechecksNewRepositoryAfterTTL(t *testing.T) {
 	if info, ok := getCachedGitInfo(dir, ttl, now.Add(ttl)); !ok || info.Branch != "main" {
 		t.Fatalf("repository should appear after expiry: %+v, %v", info, ok)
 	}
+}
+
+func collectGit(cwd string) *SegmentData {
+	cfg := config.DefaultConfig()
+	cfg.Layout.Lines = []config.LayoutLine{{Segments: []config.SegmentID{config.SegmentGit}}}
+	collector := Collector{Layout: cfg.ResolveLayout()}
+	items := collector.Collect(protocol.InputData{Workspace: protocol.Workspace{CurrentDir: cwd}})
+	if len(items) == 0 {
+		return nil
+	}
+	return &items[0].Data
 }

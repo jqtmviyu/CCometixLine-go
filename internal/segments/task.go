@@ -9,26 +9,10 @@ import (
 	"ccometixline-go/internal/protocol"
 )
 
-func CollectTask(cfg config.Config, task protocol.Task, now time.Time) []CollectedSegment {
-	settings := make(map[config.SegmentID]config.SegmentConfig, len(cfg.Segments))
-	for _, segment := range cfg.Segments {
-		settings[segment.ID] = segment
-	}
-	for _, segment := range config.DefaultConfig().Segments {
-		switch segment.ID {
-		case config.SegmentTaskLabel, config.SegmentTaskName, config.SegmentTaskStatus, config.SegmentTaskElapsed, config.SegmentTaskTrend:
-			if _, exists := settings[segment.ID]; !exists {
-				settings[segment.ID] = segment
-			}
-		}
-	}
-
+func CollectTask(fields []config.SegmentConfig, task protocol.Task, now time.Time) []CollectedSegment {
 	var items []CollectedSegment
-	for _, id := range cfg.Layout.Task {
-		segmentConfig, ok := settings[id]
-		if !ok || !segmentConfig.Enabled {
-			continue
-		}
+	for _, segmentConfig := range fields {
+		id := segmentConfig.ID
 		data := collectTaskMetric(id, task, now)
 		if data != nil {
 			items = append(items, CollectedSegment{Config: segmentConfig, Data: *data})

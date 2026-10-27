@@ -128,7 +128,7 @@ func TestWriteTaskLinesEmitsTaskJSON(t *testing.T) {
 		}},
 	}
 	var output bytes.Buffer
-	if err := writeTaskLines(&output, render.StatusLineGenerator{Config: cfg}, cfg, input, time.Now()); err != nil {
+	if err := writeTaskLines(&output, render.StatusLineGenerator{Style: cfg.Style, Layout: cfg.ResolveLayout()}, input, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -138,33 +138,5 @@ func TestWriteTaskLinesEmitsTaskJSON(t *testing.T) {
 	}
 	if line.ID != "a1" || !strings.Contains(line.Content, `Read "config"`) {
 		t.Fatalf("unexpected task output: %#v", line)
-	}
-}
-
-func TestRunKeepsStdinMetricsWithLegacyPluginLayout(t *testing.T) {
-	root := t.TempDir()
-	t.Setenv("CLAUDE_CONFIG_DIR", root)
-	t.Setenv("CCLINE_CACHE_DIR", t.TempDir())
-	contents := `
-[[layout.lines]]
-segments = ["model", "context_window", "context.breakdown", "cache", "timing.ttft", "timing.tps"]
-
-[[layout.lines]]
-segments = ["activity.tools", "activity.agents"]
-`
-	if err := os.MkdirAll(filepath.Join(root, "ccline"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "ccline", "config.toml"), []byte(contents), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	input := `{"model":{"id":"example","display_name":"Example"},"context_window":{"context_window_size":200000,"total_input_tokens":12000},"prompt_cache":{"warm":true,"caching_observed":true}}`
-	var stdout, stderr bytes.Buffer
-	if code := run(nil, strings.NewReader(input), &stdout, &stderr, false); code != 0 {
-		t.Fatalf("run returned %d: %s", code, stderr.String())
-	}
-	got := stdout.String()
-	if !strings.Contains(got, "Example") || !strings.Contains(got, "6% · 12k tokens") || !strings.Contains(got, "warm") || strings.Count(got, "\n") != 1 {
-		t.Fatalf("stdin metrics should survive the old layout: %q", got)
 	}
 }

@@ -21,7 +21,7 @@ func TestCollectTaskMetrics(t *testing.T) {
 		StartTime:    float64(1_700_000_000_000),
 		TokenSamples: []float64{100_000, 125_000},
 	}
-	items := CollectTask(cfg, task, time.UnixMilli(1_700_000_012_000))
+	items := CollectTask(cfg.ResolveLayout().Task, task, time.UnixMilli(1_700_000_012_000))
 	values := make(map[config.SegmentID]string)
 	for _, item := range items {
 		values[item.Config.ID] = item.Data.Primary

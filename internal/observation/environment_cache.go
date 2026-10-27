@@ -1,4 +1,4 @@
-package config
+package observation
 
 import (
 	"crypto/sha256"
@@ -6,12 +6,12 @@ import (
 	"path/filepath"
 	"time"
 
+	"ccometixline-go/internal/config"
 	"ccometixline-go/internal/diskcache"
 )
 
 const (
 	environmentCacheVersion = 1
-	environmentCacheTTL     = 60 * time.Second
 	environmentCacheMaxSize = 4096
 )
 
@@ -43,7 +43,7 @@ func environmentCachePath(claudeDir string, cwd string) string {
 	scope := normalizeEnvironmentCachePath(claudeDir) + "\x00" + normalizeEnvironmentCachePath(cwd)
 	sum := sha256.Sum256([]byte(scope))
 	name := hex.EncodeToString(sum[:]) + ".json"
-	return filepath.Join(CacheDir(), "environment", name)
+	return filepath.Join(config.CacheDir(), "environment", name)
 }
 
 func normalizeEnvironmentCachePath(path string) string {

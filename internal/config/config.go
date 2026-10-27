@@ -189,31 +189,16 @@ func IntOption(options map[string]any, key string, fallback int) int {
 	}
 }
 
-func enabledSegmentIDs(segments []SegmentConfig) []SegmentID {
-	ids := make([]SegmentID, 0, len(segments))
-	for _, segment := range segments {
-		if segment.Enabled {
-			ids = append(ids, segment.ID)
-		}
-	}
-	return ids
-}
-
 func applyConfigDefaults(cfg *Config) {
 	if cfg.Style.Separator == "" {
 		cfg.Style.Separator = " | "
 	}
 
-	segmentsWereMissing := len(cfg.Segments) == 0
-	if segmentsWereMissing {
+	if len(cfg.Segments) == 0 {
 		cfg.Segments = buildDefaultSegments()
 	}
 	if len(cfg.Layout.Lines) == 0 {
-		if segmentsWereMissing {
-			cfg.Layout.Lines = defaultLayout().Lines
-		} else {
-			cfg.Layout.Lines = []LayoutLine{{Segments: enabledSegmentIDs(cfg.Segments)}}
-		}
+		cfg.Layout.Lines = defaultLayout().Lines
 	}
 	if cfg.Layout.Task == nil {
 		cfg.Layout.Task = defaultLayout().Task
@@ -267,17 +252,19 @@ var defaultSegmentDefs = []segmentDefaults{
 func buildDefaultSegments() []SegmentConfig {
 	result := make([]SegmentConfig, len(defaultSegmentDefs))
 	for i, d := range defaultSegmentDefs {
-		opts := map[string]any{}
-		if d.options != nil {
-			opts = d.options
-		}
-		result[i] = SegmentConfig{
-			ID:      d.id,
-			Enabled: d.enabled,
-			Icon:    IconConfig{Emoji: d.emoji},
-			Colors:  ColorConfig{Icon: paletteColor(d.iconColor), Text: paletteColor(d.textColor)},
-			Options: opts,
-		}
+		result[i] = defaultSegment(d)
 	}
 	return result
+}
+
+func defaultSegment(d segmentDefaults) SegmentConfig {
+	options := d.options
+	if options == nil {
+		options = map[string]any{}
+	}
+	return SegmentConfig{
+		ID: d.id, Enabled: d.enabled, Icon: IconConfig{Emoji: d.emoji},
+		Colors:  ColorConfig{Icon: paletteColor(d.iconColor), Text: paletteColor(d.textColor)},
+		Options: options,
+	}
 }

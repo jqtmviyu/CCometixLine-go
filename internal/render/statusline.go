@@ -10,7 +10,8 @@ import (
 )
 
 type StatusLineGenerator struct {
-	Config config.Config
+	Style  config.StyleConfig
+	Layout config.ResolvedLayout
 }
 
 type renderedItem struct {
@@ -27,7 +28,6 @@ func (g StatusLineGenerator) Generate(items []segments.CollectedSegment) string 
 		}
 	}
 	byID := make(map[config.SegmentID]renderedItem, len(items))
-	order := make([]config.SegmentID, 0, len(items))
 	for _, item := range items {
 		// 模型和思考力度使用同一套样式，修改模型配色时一起生效。
 		if item.Config.ID == config.SegmentEffort && modelConfig != nil {
@@ -38,16 +38,10 @@ func (g StatusLineGenerator) Generate(items []segments.CollectedSegment) string 
 		if text == "" {
 			continue
 		}
-		if _, exists := byID[item.Config.ID]; !exists {
-			order = append(order, item.Config.ID)
-		}
 		byID[item.Config.ID] = renderedItem{id: item.Config.ID, text: text, config: item.Config}
 	}
 
-	layout := g.Config.Layout.Lines
-	if len(layout) == 0 {
-		layout = []config.LayoutLine{{Segments: order}}
-	}
+	layout := g.Layout.Lines
 
 	var lines []string
 	for _, row := range layout {
@@ -129,7 +123,7 @@ func (g StatusLineGenerator) joinWithWhiteSeparators(parts []renderedItem) strin
 	var result strings.Builder
 	for i, part := range parts {
 		if i > 0 {
-			separator := g.Config.Style.Separator
+			separator := g.Style.Separator
 			if isModelEffortPair(parts[i-1].id, part.id) {
 				model := part.config
 				if parts[i-1].id == config.SegmentModel {

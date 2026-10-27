@@ -23,10 +23,11 @@
 ## 目录
 
 - `cmd/ccline/main.go`：CLI 入口
-- `internal/config`：配置、路径、模型配置
+- `internal/config`：配置、路径、模型配置与有效布局解析
+- `internal/observation`：Claude 设置、思考力度来源与环境计数的按需读取和缓存
 - `internal/protocol`：Claude Code 输入协议、usage 归一化
 - `internal/render`：ANSI 与 statusline 渲染
-- `internal/segments`：各 segment 采集
+- `internal/segments`：按有效布局采集显示事实，格式化各字段
 - `testdata`：样例输入与 transcript
 - `examples/config.toml`：示例配置
 
@@ -44,7 +45,7 @@ go run ./cmd/ccline < ./testdata/input/basic.json
 go run ./cmd/ccline preview
 ```
 
-预览使用固定示例数据，不读取 Git 状态、项目 settings、本地缓存，也不会修改配置。它展示当前启用 segment 的图标、颜色和显式行布局；示例值不代表实时会话。
+预览提供固定的显示事实和时间，与实时状态栏复用格式化和字段隐藏规则；不读取 Git 状态、项目 settings、本地缓存或用户模型价格文件，也不会修改配置。它展示当前启用 segment 的图标、颜色和显式行布局；示例值不代表实时会话。
 
 ## 测试
 
@@ -97,9 +98,7 @@ go test ./...
 - `config.toml` 用 `[[layout.lines]]` 固定分组和显示顺序；默认两行，添加、删除或合并分组即可配置一行、三行或任意自定义断点。没有可显示内容的组会省略，因此实际输出可能少于两行。完整样例见 `examples/config.toml`。
 - 每组只显示列出的 segment ID；想隐藏字段就从布局中移除，或在 `[[segments]]` 中设为 `enabled = false`。主 statusline 不会按长度自动折行，长行可通过选择字段或增加显式行组控制。运行 `ccline preview` 查看效果。
 - 显示顺序由 layout 决定；不写 `[[segments]]` 时使用内置 segment 默认值。若显式写 `[[segments]]`，列表中的项目同时定义启用状态、图标、颜色和选项，未列出的 segment 不参与渲染。
-- 旧版 Go `[[segments]]` 配置仍可读取，且默认按原顺序排成一行；上游 CCometixLine 的配置格式不兼容。
 - 默认第一行集中模型/力度、工作区/Git，最后显示 tokens；第二行从 memory/skills/MCP/plugins 开始，随后显示缓存、费用/会话。`cost`、`session` 默认关闭。可按需调整布局和启用字段。
-- 旧配置中的 `style.wrap_width` 会被忽略；主 statusline 不做宽度检测或自动折行。
 - `effort` 读取用户级设置时跟随 `CLAUDE_CONFIG_DIR`。
 - 状态栏只使用一套 emoji 图标，不提供 Nerd Font 档位。默认图标：模型 `🤖`、Git `🐙`、environment `🧰`、tokens `💿`、warm cache `🔥`、cold cost `💲`；effort 无图标，并与模型相邻显示为 `模型 · 思考力度`，思考力度和中间的 `·` 沿用模型配色及文字样式。
 - `task.status` 使用 `🏃` 表示 running、`✓` 表示 completed、`✗` 表示 failed。
@@ -142,7 +141,7 @@ environment_seconds = 60
 
 ## 缓存与子任务输入
 
-状态栏直接使用 Claude Code 提供的 stdin JSON，无需额外安装插件。
+状态栏直接使用 Claude Code 提供的 stdin JSON。
 
 - `cache` 显示 Claude Code 提供的会话缓存状态、命中率、miss 数和最后 miss 原因；命中率沿用 Claude Code 的输入 token 统计，不从单次缓存 token 估算。缺少缓存输入时隐藏。
 - `cache.cold_cost` 估算公式为 `recache_tokens_if_cold × input_price_usd_per_million × cache_write_multiplier ÷ 1,000,000`，缺少任一价格参数时隐藏。
@@ -169,14 +168,8 @@ Windows 示例：
 }
 ```
 
-## 从带 companion 的旧版升级
+## 内部数据流
 
-新版已移除 companion、`ccline mod` 命令和依赖插件的上下文分类、TTFT/TPS、工具及 agent 活动字段。旧配置中的这些字段会被忽略，其余字段继续按原布局显示。
+配置加载后生成一次有效布局，主状态栏、子任务与预览共用字段选择和顺序。实时路径按布局读取所需显示事实，再交给格式化与 ANSI 渲染；子任务字段的默认配置在遍历任务前准备。
 
-曾安装旧版插件时，可通过 Claude Code 卸载，并在当前会话执行 `/reload-plugins`：
-
-```bash
-claude plugin uninstall ccline-go@ccometixline-go --scope user
-```
-
-旧版的 `ccline/bridge/`、`ccline/mod/` 文件不会再被读取，也不会自动删除。新版会在独立缓存目录中重建 Git 和环境计数缓存；自定义缓存路径使用 `CCLINE_CACHE_DIR`。
+外部设置与环境读取集中在 `internal/observation`：根据本次需要判断 effort 的来源优先级，并共享 settings 读取；环境计数继续沿用原有缓存。预览提供固定事实，复用实时格式化逻辑。

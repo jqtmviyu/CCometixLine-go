@@ -1,4 +1,4 @@
-package config
+package observation
 
 import (
 	"bufio"
@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"ccometixline-go/internal/config"
 )
 
 type EnvironmentCounts struct {
@@ -19,9 +21,17 @@ type EnvironmentCounts struct {
 	Plugins     int `json:"plugins"`
 }
 
-type SettingsSnapshot struct {
-	counts          EnvironmentCounts
-	configuredLevel string
+type Request struct {
+	CWD         string
+	Environment bool
+	Effort      bool
+	InputEffort string
+	CacheTTL    time.Duration
+}
+
+type Snapshot struct {
+	Environment EnvironmentCounts
+	Effort      string
 }
 
 type parsedSettings struct {
@@ -30,68 +40,46 @@ type parsedSettings struct {
 	EffortLevel           string          `json:"effortLevel"`
 }
 
-type settingsSnapshotOptions struct {
-	includeEnvironment bool
-	includeEffort      bool
-	useCache           bool
-	cacheTTL           time.Duration
+func Read(request Request) Snapshot {
+	return readAt(request, time.Now())
 }
 
-func LoadSettingsSnapshot(cwd string) SettingsSnapshot {
-	return loadSettingsSnapshotAt(cwd, settingsSnapshotOptions{includeEnvironment: true, includeEffort: true}, time.Now())
-}
-
-func LoadSettingsSnapshotForSegments(cwd string, segmentIDs []SegmentID) SettingsSnapshot {
-	return LoadSettingsSnapshotWithCache(cwd, segmentIDs, environmentCacheTTL)
-}
-
-func LoadSettingsSnapshotWithCache(cwd string, segmentIDs []SegmentID, ttl time.Duration) SettingsSnapshot {
-	options := settingsSnapshotOptions{useCache: ttl > 0, cacheTTL: ttl}
-	for _, id := range segmentIDs {
-		switch id {
-		case SegmentEnvironment:
-			options.includeEnvironment = true
-		case SegmentEffort:
-			options.includeEffort = true
+func readAt(request Request, now time.Time) Snapshot {
+	if !request.Environment && !request.Effort {
+		return Snapshot{}
+	}
+	var snapshot Snapshot
+	direct := false
+	if request.Effort {
+		snapshot.Effort, direct = normalizeEffort(os.Getenv("CLAUDE_CODE_EFFORT_LEVEL"))
+		if !direct {
+			snapshot.Effort, direct = normalizeEffort(request.InputEffort)
 		}
 	}
-	return loadSettingsSnapshotAt(cwd, options, time.Now())
-}
-
-func loadSettingsSnapshotAt(cwd string, options settingsSnapshotOptions, now time.Time) SettingsSnapshot {
-	if !options.includeEnvironment && !options.includeEffort {
-		return SettingsSnapshot{}
+	needSettingsEffort := request.Effort && !direct
+	// 直接来源已确定力度且无需环境计数时，跳过设置文件和目录读取。
+	if !request.Environment && !needSettingsEffort {
+		return snapshot
 	}
-
-	claudeDir := ClaudeDir()
-	projectClaudeDir := filepath.Join(cwd, ".claude")
+	claudeDir := config.ClaudeDir()
+	projectClaudeDir := filepath.Join(request.CWD, ".claude")
 	projectOverlapsUser := samePath(projectClaudeDir, claudeDir)
-
-	var counts EnvironmentCounts
-	cacheHit := false
-	if options.includeEnvironment && options.useCache {
-		ttl := environmentCacheTTL
-		if options.cacheTTL > 0 {
-			ttl = options.cacheTTL
-		}
-		counts, cacheHit = readEnvironmentCache(claudeDir, cwd, now, ttl)
+	cached := false
+	if request.Environment && request.CacheTTL > 0 {
+		snapshot.Environment, cached = readEnvironmentCache(claudeDir, request.CWD, now, request.CacheTTL)
 	}
-
-	var settingsList []parsedSettings
-	if options.includeEffort || (options.includeEnvironment && !cacheHit) {
-		settingsList = collectSettingsList(claudeDir, projectClaudeDir, projectOverlapsUser)
+	var settings []parsedSettings
+	if needSettingsEffort || request.Environment && !cached {
+		settings = collectSettingsList(claudeDir, projectClaudeDir, projectOverlapsUser)
 	}
-
-	if options.includeEnvironment && !cacheHit {
-		counts = collectEnvironmentCounts(claudeDir, cwd, projectClaudeDir, projectOverlapsUser, settingsList)
-		if options.useCache {
-			writeEnvironmentCache(claudeDir, cwd, counts, now)
+	if request.Environment && !cached {
+		snapshot.Environment = collectEnvironmentCounts(claudeDir, request.CWD, projectClaudeDir, projectOverlapsUser, settings)
+		if request.CacheTTL > 0 {
+			writeEnvironmentCache(claudeDir, request.CWD, snapshot.Environment, now)
 		}
 	}
-
-	snapshot := SettingsSnapshot{counts: counts}
-	if options.includeEffort {
-		snapshot.configuredLevel = configuredEffortLevel(settingsList)
+	if needSettingsEffort {
+		snapshot.Effort, _ = normalizeEffort(configuredEffortLevel(settings))
 	}
 	return snapshot
 }
@@ -103,22 +91,6 @@ func collectEnvironmentCounts(claudeDir string, cwd string, projectClaudeDir str
 		Skills:      len(collectSkillNames(claudeDir, cwd)),
 		Plugins:     len(collectPluginNames(settingsList)),
 	}
-}
-
-func CountEnvironment(cwd string) EnvironmentCounts {
-	return LoadSettingsSnapshotForSegments(cwd, []SegmentID{SegmentEnvironment}).EnvironmentCounts()
-}
-
-func ConfiguredEffortLevel(cwd string) string {
-	return LoadSettingsSnapshotForSegments(cwd, []SegmentID{SegmentEffort}).ConfiguredEffortLevel()
-}
-
-func (s SettingsSnapshot) EnvironmentCounts() EnvironmentCounts {
-	return s.counts
-}
-
-func (s SettingsSnapshot) ConfiguredEffortLevel() string {
-	return s.configuredLevel
 }
 
 func readSettings(path string) parsedSettings {
