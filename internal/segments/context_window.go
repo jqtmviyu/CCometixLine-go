@@ -60,15 +60,30 @@ func (s ContextWindowSegment) Collect() *SegmentData {
 		}
 	}
 
-	return &SegmentData{
-		Primary: percentageDisplay + " · " + tokensDisplay + " tokens",
-		Metadata: map[string]string{
-			"limit":      fmt.Sprintf("%d", contextLimit),
-			"model":      s.Input.Model.ID,
-			"tokens":     tokensMetadata,
-			"percentage": fmt.Sprintf("%v", percentage),
-		},
+	primary := percentageDisplay + " · " + tokensDisplay + " tokens"
+	metadata := map[string]string{
+		"limit":      fmt.Sprintf("%d", contextLimit),
+		"model":      s.Input.Model.ID,
+		"tokens":     tokensMetadata,
+		"percentage": fmt.Sprintf("%v", percentage),
 	}
+	if hit := cacheHitDisplay(s.Input.PromptCache); hit != "" {
+		primary += " · " + hit
+		metadata["hit_ratio"] = fmt.Sprintf("%v", *s.Input.PromptCache.HitRatio)
+	}
+
+	return &SegmentData{Primary: primary, Metadata: metadata}
+}
+
+// 命中率并进 tokens 段，共用同一个图标和配色；缓存未观测或请求数不足 2 次时不显示。
+func cacheHitDisplay(cache *protocol.PromptCache) string {
+	if cache == nil || cache.CachingObserved != nil && !*cache.CachingObserved {
+		return ""
+	}
+	if cache.HitRatio == nil || cache.Requests == nil || *cache.Requests <= 1 || *cache.HitRatio < 0 || *cache.HitRatio > 1 {
+		return ""
+	}
+	return fmt.Sprintf("hit %.0f%%", *cache.HitRatio*100)
 }
 
 func contextPercentage(reported *float64, used uint64, hasUsage bool, limit uint32, corrected bool) (float64, bool) {

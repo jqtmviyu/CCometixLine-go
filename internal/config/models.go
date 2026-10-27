@@ -1,7 +1,6 @@
 package config
 
 import (
-	"math"
 	"os"
 	"regexp"
 	"strings"
@@ -18,12 +17,10 @@ type ModelConfig struct {
 }
 
 type ModelEntry struct {
-	Pattern                 string             `toml:"pattern"`
-	DisplayName             string             `toml:"display_name"`
-	ContextLimit            uint32             `toml:"context_limit"`
-	InputPriceUSDPerMillion float64            `toml:"input_price_usd_per_million"`
-	CacheWriteMultipliers   map[string]float64 `toml:"cache_write_multipliers"`
-	Match                   string             `toml:"match"`
+	Pattern      string `toml:"pattern"`
+	DisplayName  string `toml:"display_name"`
+	ContextLimit uint32 `toml:"context_limit"`
+	Match        string `toml:"match"`
 
 	compiledRegex *regexp.Regexp
 	invalidRegex  bool
@@ -170,30 +167,6 @@ func modelEntryMatches(modelID string, entry ModelEntry) bool {
 func (m ModelConfig) GetContextLimit(modelID string) uint32 {
 	_, limit, _ := m.resolve(modelID)
 	return limit
-}
-
-func (m ModelConfig) CacheWriteCost(modelID, ttl string, tokens uint64) (float64, bool) {
-	if tokens == 0 {
-		return 0, false
-	}
-
-	for _, entry := range m.ModelEntries {
-		if !modelEntryMatches(modelID, entry) {
-			continue
-		}
-		multiplier, ok := entry.CacheWriteMultipliers[ttl]
-		price := entry.InputPriceUSDPerMillion
-		if !ok || price <= 0 || multiplier <= 0 || math.IsInf(price, 0) || math.IsNaN(price) || math.IsInf(multiplier, 0) || math.IsNaN(multiplier) {
-			return 0, false
-		}
-		cost := float64(tokens) * price * multiplier / 1_000_000
-		if math.IsInf(cost, 0) || math.IsNaN(cost) {
-			return 0, false
-		}
-		return cost, true
-	}
-
-	return 0, false
 }
 
 func (m ModelConfig) ResolveContextLimit(modelID string, reported uint32) (uint32, bool) {

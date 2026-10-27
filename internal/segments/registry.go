@@ -33,7 +33,7 @@ func (c Collector) Collect(input protocol.InputData) []CollectedSegment {
 		switch field.ID {
 		case config.SegmentEnvironment:
 			request.Environment = true
-		case config.SegmentEffort:
+		case config.SegmentModel:
 			request.Effort = true
 		case config.SegmentGit:
 			needGit = true
@@ -54,9 +54,7 @@ func (c Collector) Format(facts Facts) []CollectedSegment {
 		var segment Segment
 		switch segmentConfig.ID {
 		case config.SegmentModel:
-			segment = ModelSegment{Input: facts.Input, ModelConfig: c.Models}
-		case config.SegmentEffort:
-			segment = EffortSegment{Level: facts.Local.Effort}
+			segment = ModelSegment{Input: facts.Input, ModelConfig: c.Models, Effort: facts.Local.Effort}
 		case config.SegmentDirectory:
 			segment = DirectorySegment{Input: facts.Input}
 		case config.SegmentGit:
@@ -69,10 +67,6 @@ func (c Collector) Format(facts Facts) []CollectedSegment {
 			segment = SessionSegment{Input: facts.Input}
 		case config.SegmentEnvironment:
 			segment = EnvironmentSegment{Counts: facts.Local.Environment}
-		case config.SegmentCache:
-			segment = CacheSegment{Input: facts.Input, Now: facts.Now}
-		case config.SegmentCacheColdCost:
-			segment = CacheColdCostSegment{Input: facts.Input, ModelConfig: c.Models}
 		default:
 			continue
 		}

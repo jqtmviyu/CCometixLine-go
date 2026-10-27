@@ -14,41 +14,20 @@ type StatusLineGenerator struct {
 	Layout config.ResolvedLayout
 }
 
-type renderedItem struct {
-	id     config.SegmentID
-	text   string
-	config config.SegmentConfig
-}
-
 func (g StatusLineGenerator) Generate(items []segments.CollectedSegment) string {
-	var modelConfig *config.SegmentConfig
-	for i := range items {
-		if items[i].Config.ID == config.SegmentModel {
-			modelConfig = &items[i].Config
-		}
-	}
-	byID := make(map[config.SegmentID]renderedItem, len(items))
+	byID := make(map[config.SegmentID]string, len(items))
 	for _, item := range items {
-		// 模型和思考力度使用同一套样式，修改模型配色时一起生效。
-		if item.Config.ID == config.SegmentEffort && modelConfig != nil {
-			item.Config.Colors = modelConfig.Colors
-			item.Config.Styles = modelConfig.Styles
+		if text := g.renderSegment(item.Config, item.Data); text != "" {
+			byID[item.Config.ID] = text
 		}
-		text := g.renderSegment(item.Config, item.Data)
-		if text == "" {
-			continue
-		}
-		byID[item.Config.ID] = renderedItem{id: item.Config.ID, text: text, config: item.Config}
 	}
-
-	layout := g.Layout.Lines
 
 	var lines []string
-	for _, row := range layout {
-		parts := make([]renderedItem, 0, len(row.Segments))
+	for _, row := range g.Layout.Lines {
+		parts := make([]string, 0, len(row.Segments))
 		for _, id := range row.Segments {
-			if item, ok := byID[id]; ok {
-				parts = append(parts, item)
+			if text, ok := byID[id]; ok {
+				parts = append(parts, text)
 			}
 		}
 		if len(parts) > 0 {
@@ -60,11 +39,10 @@ func (g StatusLineGenerator) Generate(items []segments.CollectedSegment) string 
 }
 
 func (g StatusLineGenerator) GenerateTaskLine(items []segments.CollectedSegment, columns int) string {
-	parts := make([]renderedItem, 0, len(items))
+	parts := make([]string, 0, len(items))
 	for _, item := range items {
-		text := g.renderSegment(item.Config, item.Data)
-		if text != "" {
-			parts = append(parts, renderedItem{id: item.Config.ID, text: text, config: item.Config})
+		if text := g.renderSegment(item.Config, item.Data); text != "" {
+			parts = append(parts, text)
 		}
 	}
 	if len(parts) == 0 {
@@ -77,8 +55,8 @@ func (g StatusLineGenerator) GenerateTaskLine(items []segments.CollectedSegment,
 	return text
 }
 
-func (g StatusLineGenerator) joinParts(parts []renderedItem) string {
-	return g.joinWithWhiteSeparators(parts)
+func (g StatusLineGenerator) joinParts(parts []string) string {
+	return strings.Join(parts, "\x1b[37m"+g.Style.Separator+"\x1b[0m")
 }
 
 func (g StatusLineGenerator) renderSegment(cfg config.SegmentConfig, data segments.SegmentData) string {
@@ -112,29 +90,4 @@ func (g StatusLineGenerator) renderSegment(cfg config.SegmentConfig, data segmen
 		segment += " " + ApplyStyle(data.Secondary, cfg.Colors.Text, cfg.Styles.TextBold)
 	}
 	return segment
-}
-
-func isModelEffortPair(left config.SegmentID, right config.SegmentID) bool {
-	return (left == config.SegmentModel && right == config.SegmentEffort) ||
-		(left == config.SegmentEffort && right == config.SegmentModel)
-}
-
-func (g StatusLineGenerator) joinWithWhiteSeparators(parts []renderedItem) string {
-	var result strings.Builder
-	for i, part := range parts {
-		if i > 0 {
-			separator := g.Style.Separator
-			if isModelEffortPair(parts[i-1].id, part.id) {
-				model := part.config
-				if parts[i-1].id == config.SegmentModel {
-					model = parts[i-1].config
-				}
-				result.WriteString(ApplyStyle(" · ", model.Colors.Text, model.Styles.TextBold))
-			} else {
-				result.WriteString("\x1b[37m" + separator + "\x1b[0m")
-			}
-		}
-		result.WriteString(part.text)
-	}
-	return result.String()
 }

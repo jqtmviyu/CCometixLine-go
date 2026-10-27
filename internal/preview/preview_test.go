@@ -12,8 +12,8 @@ import (
 func TestRenderUsesConfiguredSegmentsAndLayout(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Layout.Lines = []config.LayoutLine{
-		{Segments: []config.SegmentID{config.SegmentModel, config.SegmentEffort}},
-		{Segments: []config.SegmentID{config.SegmentContextWindow, config.SegmentCache}},
+		{Segments: []config.SegmentID{config.SegmentModel}},
+		{Segments: []config.SegmentID{config.SegmentContextWindow}},
 		{Segments: []config.SegmentID{config.SegmentSession}},
 	}
 	setEnabled(&cfg, config.SegmentCost, true)
@@ -32,7 +32,7 @@ func TestRenderUsesConfiguredSegmentsAndLayout(t *testing.T) {
 	if !strings.Contains(first, "配置预览（示例数据，非实时会话）") {
 		t.Fatalf("missing preview notice: %q", first)
 	}
-	if !strings.Contains(first, "Sonnet 4.5") || !strings.Contains(first, "62% · 124k tokens") || !strings.Contains(first, "warm 4m") {
+	if !strings.Contains(first, "Sonnet 4.5") || !strings.Contains(first, "62% · 124k tokens") || !strings.Contains(first, "hit 92%") {
 		t.Fatalf("missing sample metrics: %q", first)
 	}
 	if strings.Contains(first, "main") {
@@ -76,7 +76,7 @@ func TestPreviewUsesFixedFactsAndRealSessionFormatting(t *testing.T) {
 	cfg := config.DefaultConfig()
 	setEnabled(&cfg, config.SegmentSession, true)
 	output := Render(cfg)
-	for _, text := range []string{"Sonnet 4.5", "high", "main", "memory 3 · skill 5 · mcp 2 · plugin 1", "warm 4m", "~$0.08", "18m42s", "\x1b[32m+24\x1b[0m \x1b[31m-6\x1b[0m"} {
+	for _, text := range []string{"Sonnet 4.5", "high", "main", "memory 3 · skill 5 · mcp 2 · plugin 1", "hit 92%", "18m42s", "\x1b[32m+24\x1b[0m \x1b[31m-6\x1b[0m"} {
 		if !strings.Contains(output, text) {
 			t.Fatalf("missing %q in fixed preview: %q", text, output)
 		}

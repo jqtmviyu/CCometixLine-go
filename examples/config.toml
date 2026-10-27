@@ -12,7 +12,7 @@ separator = " | "
 task = ["task.status", "task.name", "task.label", "task.elapsed", "task.trend"]
 
 [[layout.lines]]
-segments = ["model", "effort", "directory", "git", "context_window"]
+segments = ["model", "directory", "git", "context_window"]
 
 [[layout.lines]]
-segments = ["environment", "cache", "cache.cold_cost", "cost", "session"]
+segments = ["environment", "cost", "session"]

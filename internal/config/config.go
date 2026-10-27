@@ -79,15 +79,12 @@ type SegmentID string
 
 const (
 	SegmentModel         SegmentID = "model"
-	SegmentEffort        SegmentID = "effort"
 	SegmentDirectory     SegmentID = "directory"
 	SegmentGit           SegmentID = "git"
 	SegmentContextWindow SegmentID = "context_window"
 	SegmentCost          SegmentID = "cost"
 	SegmentSession       SegmentID = "session"
 	SegmentEnvironment   SegmentID = "environment"
-	SegmentCache         SegmentID = "cache"
-	SegmentCacheColdCost SegmentID = "cache.cold_cost"
 	SegmentTaskLabel     SegmentID = "task.label"
 	SegmentTaskName      SegmentID = "task.name"
 	SegmentTaskStatus    SegmentID = "task.status"
@@ -140,8 +137,8 @@ func DefaultConfig() Config {
 func defaultLayout() LayoutConfig {
 	return LayoutConfig{
 		Lines: []LayoutLine{
-			{Segments: []SegmentID{SegmentModel, SegmentEffort, SegmentDirectory, SegmentGit, SegmentContextWindow}},
-			{Segments: []SegmentID{SegmentEnvironment, SegmentCache, SegmentCacheColdCost, SegmentCost, SegmentSession}},
+			{Segments: []SegmentID{SegmentModel, SegmentDirectory, SegmentGit, SegmentContextWindow}},
+			{Segments: []SegmentID{SegmentEnvironment, SegmentCost, SegmentSession}},
 		},
 		Task: []SegmentID{SegmentTaskStatus, SegmentTaskName, SegmentTaskLabel, SegmentTaskElapsed, SegmentTaskTrend},
 	}
@@ -233,15 +230,12 @@ type segmentDefaults struct {
 
 var defaultSegmentDefs = []segmentDefaults{
 	{SegmentModel, true, "🤖", 14, 14, nil},
-	{SegmentEffort, true, "", 14, 14, nil},
 	{SegmentDirectory, true, "📁", 11, 10, nil},
 	{SegmentGit, true, "🐙", 12, 12, nil},
 	{SegmentContextWindow, true, "💿", 13, 13, nil},
 	{SegmentCost, false, "💰", 3, 3, nil},
 	{SegmentSession, false, "⏱️", 2, 2, nil},
-	{SegmentEnvironment, true, "🧰", 250, 250, nil},
-	{SegmentCache, true, "🔥", 208, 208, nil},
-	{SegmentCacheColdCost, true, "💲", 3, 3, nil},
+	{SegmentEnvironment, true, "🧰", 216, 216, nil},
 	{SegmentTaskLabel, true, "↳", 11, 11, nil},
 	{SegmentTaskName, true, "👤", 14, 14, nil},
 	{SegmentTaskStatus, true, "", 10, 10, nil},

@@ -47,15 +47,12 @@ func TestDefaultConfigEnablesEnvironmentSegmentWithToolIcon(t *testing.T) {
 	t.Fatalf("environment segment not found")
 }
 
-func TestDefaultConfigUsesSelectedIconsAndKeepsModelEffortTogether(t *testing.T) {
+func TestDefaultConfigUsesSelectedIcons(t *testing.T) {
 	cfg := DefaultConfig()
 	for id, want := range map[SegmentID]string{
 		SegmentModel:         "🤖",
-		SegmentEffort:        "",
 		SegmentGit:           "🐙",
 		SegmentContextWindow: "💿",
-		SegmentCache:         "🔥",
-		SegmentCacheColdCost: "💲",
 	} {
 		segment := findSegmentConfig(t, cfg, id)
 		if segment.Icon.Emoji != want {
@@ -64,8 +61,8 @@ func TestDefaultConfigUsesSelectedIconsAndKeepsModelEffortTogether(t *testing.T)
 	}
 
 	line := cfg.Layout.Lines[0].Segments
-	if len(line) < 2 || line[0] != SegmentModel || line[1] != SegmentEffort {
-		t.Fatalf("expected model and effort to be adjacent on the first line, got %#v", line)
+	if len(line) < 2 || line[0] != SegmentModel || line[1] != SegmentDirectory {
+		t.Fatalf("expected model first on the first line, got %#v", line)
 	}
 }
 
@@ -83,8 +80,8 @@ func findSegmentConfig(t *testing.T, cfg Config, id SegmentID) SegmentConfig {
 func TestDefaultConfigUsesTwoLayoutLines(t *testing.T) {
 	cfg := DefaultConfig()
 	want := []LayoutLine{
-		{Segments: []SegmentID{SegmentModel, SegmentEffort, SegmentDirectory, SegmentGit, SegmentContextWindow}},
-		{Segments: []SegmentID{SegmentEnvironment, SegmentCache, SegmentCacheColdCost, SegmentCost, SegmentSession}},
+		{Segments: []SegmentID{SegmentModel, SegmentDirectory, SegmentGit, SegmentContextWindow}},
+		{Segments: []SegmentID{SegmentEnvironment, SegmentCost, SegmentSession}},
 	}
 	if !reflect.DeepEqual(cfg.Layout.Lines, want) {
 		t.Fatalf("unexpected default layout: got %#v, want %#v", cfg.Layout.Lines, want)
@@ -124,7 +121,7 @@ separator = " | "
 segments = ["model", "git"]
 
 [[layout.lines]]
-segments = ["context_window", "cache"]
+segments = ["context_window", "cost"]
 
 [layout]
 task = ["task.status", "task.label"]
@@ -140,7 +137,7 @@ task = ["task.status", "task.label"]
 	if len(cfg.Layout.Lines) != 2 || len(cfg.Layout.Lines[1].Segments) != 2 {
 		t.Fatalf("unexpected layout: %#v", cfg.Layout)
 	}
-	if cfg.Layout.Lines[1].Segments[1] != SegmentCache {
+	if cfg.Layout.Lines[1].Segments[1] != SegmentCost {
 		t.Fatalf("unexpected second line segments: %#v", cfg.Layout.Lines[1])
 	}
 	if len(cfg.Layout.Task) != 2 || cfg.Layout.Task[0] != SegmentTaskStatus {

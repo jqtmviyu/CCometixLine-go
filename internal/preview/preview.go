@@ -49,10 +49,9 @@ func sampleFacts() (segments.Facts, config.ModelConfig) {
 	now := time.UnixMilli(1_700_000_018_000)
 	tokens, limit, percentage := uint64(124_000), uint32(200_000), 62.0
 	cost, duration, added, removed := 0.42, uint64(1_122_000), uint32(24), uint32(6)
-	warm, observed := true, true
-	expiry := float64(now.Unix() + 240)
-	requests, misses := uint64(10), uint64(1)
-	ratio, ttl, recache := 0.92, "5m", uint64(25_600)
+	observed := true
+	requests := uint64(10)
+	ratio := 0.92
 	input := protocol.InputData{
 		Model:     protocol.Model{ID: "preview-model", DisplayName: "Sonnet 4.5"},
 		Workspace: protocol.Workspace{CurrentDir: "sample-project"},
@@ -63,14 +62,11 @@ func sampleFacts() (segments.Facts, config.ModelConfig) {
 			TotalCostUSD: &cost, TotalDurationMS: &duration, TotalLinesAdded: &added, TotalLinesRemoved: &removed,
 		},
 		PromptCache: &protocol.PromptCache{
-			Warm: &warm, CachingObserved: &observed, ExpiresAt: &expiry,
-			Requests: &requests, HitRatio: &ratio, Misses: &misses,
-			TTL: &ttl, RecacheTokensIfCold: &recache,
+			CachingObserved: &observed, Requests: &requests, HitRatio: &ratio,
 		},
 	}
 	models := config.ModelConfig{ModelEntries: []config.ModelEntry{{
 		Pattern: "preview-model", Match: "exact", DisplayName: "Sonnet 4.5", ContextLimit: 200_000,
-		InputPriceUSDPerMillion: 2.5, CacheWriteMultipliers: map[string]float64{"5m": 1.25},
 	}}}
 	return segments.Facts{
 		Input: input, Now: now,

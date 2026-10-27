@@ -8,18 +8,22 @@ import (
 type ModelSegment struct {
 	Input       protocol.InputData
 	ModelConfig config.ModelConfig
+	Effort      string
 }
 
 func (s ModelSegment) Collect() *SegmentData {
-	metadata := map[string]string{
-		"model_id":     s.Input.Model.ID,
-		"display_name": s.Input.Model.DisplayName,
+	effort := s.Effort
+	if effort == "" {
+		effort = "auto"
 	}
 
 	return &SegmentData{
-		Primary:   s.formatModelName(),
-		Secondary: "",
-		Metadata:  metadata,
+		Primary: s.formatModelName() + " · " + effort,
+		Metadata: map[string]string{
+			"model_id":     s.Input.Model.ID,
+			"display_name": s.Input.Model.DisplayName,
+			"effort":       effort,
+		},
 	}
 }
 

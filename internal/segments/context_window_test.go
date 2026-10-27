@@ -3,6 +3,7 @@ package segments
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"ccometixline-go/internal/config"
@@ -272,6 +273,57 @@ func TestContextWindowSegmentNilWithNoDataNoTranscript(t *testing.T) {
 	}
 	if data.Primary != "- · - tokens" {
 		t.Fatalf("expected '- · - tokens', got %q", data.Primary)
+	}
+}
+
+func TestContextWindowSegmentAppendsCacheHit(t *testing.T) {
+	totalInputTokens := uint64(124000)
+	contextLimit := uint32(200000)
+	usedPercentage := 62.0
+	observed := true
+	requests := uint64(10)
+	hitRatio := 0.97
+	segment := ContextWindowSegment{
+		Input: protocol.InputData{
+			Model: protocol.Model{ID: "gpt-5.4"},
+			ContextWindow: &protocol.ContextWindow{
+				TotalInputTokens:  &totalInputTokens,
+				ContextWindowSize: &contextLimit,
+				UsedPercentage:    &usedPercentage,
+			},
+			PromptCache: &protocol.PromptCache{
+				CachingObserved: &observed, Requests: &requests, HitRatio: &hitRatio,
+			},
+		},
+		ModelConfig: config.LoadModelConfig(),
+	}
+
+	data := segment.Collect()
+	if data == nil || data.Primary != "62% · 124k tokens · hit 97%" {
+		t.Fatalf("unexpected context window with cache hit: %#v", data)
+	}
+	if data.Metadata["hit_ratio"] != "0.97" {
+		t.Fatalf("expected hit ratio metadata 0.97, got %q", data.Metadata["hit_ratio"])
+	}
+}
+
+func TestContextWindowSegmentHidesUnobservedCacheHit(t *testing.T) {
+	usedPercentage := 62.0
+	observed := false
+	requests := uint64(10)
+	hitRatio := 0.97
+	segment := ContextWindowSegment{
+		Input: protocol.InputData{
+			Model:         protocol.Model{ID: "gpt-5.4"},
+			ContextWindow: &protocol.ContextWindow{UsedPercentage: &usedPercentage},
+			PromptCache:   &protocol.PromptCache{CachingObserved: &observed, Requests: &requests, HitRatio: &hitRatio},
+		},
+		ModelConfig: config.LoadModelConfig(),
+	}
+
+	data := segment.Collect()
+	if data == nil || strings.Contains(data.Primary, "hit ") {
+		t.Fatalf("expected unobserved cache hit to be hidden, got %#v", data)
 	}
 }
 
