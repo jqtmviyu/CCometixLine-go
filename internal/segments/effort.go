@@ -36,18 +36,25 @@ func (s EffortSegment) Collect() *SegmentData {
 	}
 }
 
-func resolveEffort(input protocol.InputData, settings config.SettingsSnapshot) string {
+func directEffort(input protocol.InputData) (string, bool) {
 	effort, ok := normalizeEffort(os.Getenv("CLAUDE_CODE_EFFORT_LEVEL"))
 	if ok {
-		return effort
+		return effort, true
 	}
 
 	effort, ok = normalizeEffort(payloadEffort(input))
 	if ok {
-		return effort
+		return effort, true
 	}
 
-	effort, ok = normalizeEffort(settings.ConfiguredEffortLevel())
+	return "", false
+}
+
+func resolveEffort(input protocol.InputData, settings config.SettingsSnapshot) string {
+	if effort, ok := directEffort(input); ok {
+		return effort
+	}
+	effort, ok := normalizeEffort(settings.ConfiguredEffortLevel())
 	if ok {
 		return effort
 	}
@@ -89,4 +96,3 @@ func formatEffort(value string) string {
 
 	return value
 }
-

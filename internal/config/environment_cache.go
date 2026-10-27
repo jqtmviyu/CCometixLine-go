@@ -3,16 +3,15 @@ package config
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
-	"io"
-	"os"
 	"path/filepath"
 	"time"
+
+	"ccometixline-go/internal/diskcache"
 )
 
 const (
 	environmentCacheVersion = 1
-	environmentCacheTTL     = 10 * time.Second
+	environmentCacheTTL     = 60 * time.Second
 	environmentCacheMaxSize = 4096
 )
 
@@ -22,71 +21,29 @@ type environmentCacheRecord struct {
 	Counts    EnvironmentCounts `json:"counts"`
 }
 
-func readEnvironmentCache(claudeDir string, cwd string, now time.Time) (EnvironmentCounts, bool) {
-	file, err := os.Open(environmentCachePath(claudeDir, cwd))
-	if err != nil {
-		return EnvironmentCounts{}, false
-	}
-	defer file.Close()
-
-	data, err := io.ReadAll(io.LimitReader(file, environmentCacheMaxSize+1))
-	if err != nil || len(data) > environmentCacheMaxSize {
-		return EnvironmentCounts{}, false
-	}
-
+func readEnvironmentCache(claudeDir string, cwd string, now time.Time, ttl time.Duration) (EnvironmentCounts, bool) {
 	var record environmentCacheRecord
-	if err := json.Unmarshal(data, &record); err != nil || record.Version != environmentCacheVersion {
+	if !diskcache.Read(environmentCachePath(claudeDir, cwd), environmentCacheMaxSize, &record) || record.Version != environmentCacheVersion {
 		return EnvironmentCounts{}, false
 	}
 	age := now.Sub(time.UnixMilli(record.UpdatedAt))
-	if age < 0 || age > environmentCacheTTL || !validEnvironmentCounts(record.Counts) {
+	if age < 0 || age >= ttl || !validEnvironmentCounts(record.Counts) {
 		return EnvironmentCounts{}, false
 	}
 	return record.Counts, true
 }
 
 func writeEnvironmentCache(claudeDir string, cwd string, counts EnvironmentCounts, now time.Time) {
-	path := environmentCachePath(claudeDir, cwd)
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return
-	}
-
-	file, err := os.CreateTemp(dir, ".environment-*.tmp")
-	if err != nil {
-		return
-	}
-	tempPath := file.Name()
-	defer os.Remove(tempPath)
-
-	if err := file.Chmod(0o600); err != nil {
-		file.Close()
-		return
-	}
-	record := environmentCacheRecord{
-		Version:   environmentCacheVersion,
-		UpdatedAt: now.UnixMilli(),
-		Counts:    counts,
-	}
-	if err := json.NewEncoder(file).Encode(record); err != nil {
-		file.Close()
-		return
-	}
-	if err := file.Sync(); err != nil {
-		file.Close()
-		return
-	}
-	if err := file.Close(); err != nil {
-		return
-	}
-	_ = os.Rename(tempPath, path)
+	diskcache.Write(environmentCachePath(claudeDir, cwd), environmentCacheRecord{
+		Version: environmentCacheVersion, UpdatedAt: now.UnixMilli(), Counts: counts,
+	})
 }
 
 func environmentCachePath(claudeDir string, cwd string) string {
 	scope := normalizeEnvironmentCachePath(claudeDir) + "\x00" + normalizeEnvironmentCachePath(cwd)
 	sum := sha256.Sum256([]byte(scope))
 	name := hex.EncodeToString(sum[:]) + ".json"
-	return filepath.Join(BridgeDir(), "environment", name)
+	return filepath.Join(CacheDir(), "environment", name)
 }
 
 func normalizeEnvironmentCachePath(path string) string {

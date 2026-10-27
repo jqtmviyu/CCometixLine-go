@@ -12,7 +12,7 @@ func TestRenderUsesConfiguredSegmentsAndLayout(t *testing.T) {
 	cfg.Layout.Lines = []config.LayoutLine{
 		{Segments: []config.SegmentID{config.SegmentModel, config.SegmentEffort}},
 		{Segments: []config.SegmentID{config.SegmentContextWindow, config.SegmentCache}},
-		{Segments: []config.SegmentID{config.SegmentActivityTools}},
+		{Segments: []config.SegmentID{config.SegmentSession}},
 	}
 	setEnabled(&cfg, config.SegmentCost, true)
 	setEnabled(&cfg, config.SegmentGit, false)

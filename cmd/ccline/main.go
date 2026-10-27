@@ -7,13 +7,11 @@ import (
 	"os"
 	"time"
 
-	"ccometixline-go/internal/companion"
 	"ccometixline-go/internal/config"
 	"ccometixline-go/internal/preview"
 	"ccometixline-go/internal/protocol"
 	"ccometixline-go/internal/render"
 	"ccometixline-go/internal/segments"
-	"ccometixline-go/internal/state"
 )
 
 const maxInputBytes = 1 << 20
@@ -36,17 +34,9 @@ func stdinIsTerminal(file *os.File) bool {
 }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer, terminal bool) int {
-	return runWithMod(args, stdin, stdout, stderr, terminal, companion.Run)
-}
-
-func runWithMod(args []string, stdin io.Reader, stdout, stderr io.Writer, terminal bool, runMod func([]string, io.Writer, io.Writer) int) int {
-	if len(args) > 0 && args[0] == "mod" {
-		return runMod(args[1:], stdout, stderr)
-	}
-
 	previewRequested := len(args) == 1 && args[0] == "preview"
 	if len(args) > 0 && !previewRequested {
-		fmt.Fprintln(stderr, "usage: ccline [preview|mod <install|status|uninstall>]")
+		fmt.Fprintln(stderr, "usage: ccline [preview]")
 		return 2
 	}
 
@@ -95,8 +85,7 @@ func runWithMod(args []string, stdin io.Reader, stdout, stderr io.Writer, termin
 		return 1
 	}
 	modelConfig := config.LoadModelConfig()
-	bridge := state.ReadBridge(input.SessionID, time.Now())
-	collected := segments.CollectAllWithBridge(cfg, modelConfig, input, bridge)
+	collected := segments.CollectAll(cfg, modelConfig, input)
 	fmt.Fprintln(stdout, generator.Generate(collected))
 	return 0
 }

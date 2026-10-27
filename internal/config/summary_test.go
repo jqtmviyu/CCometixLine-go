@@ -112,12 +112,12 @@ func TestEnvironmentCacheRefreshesAfterTTLAndKeepsEffortCurrent(t *testing.T) {
 }
 
 func TestEnvironmentCacheSeparatesConfigAndWorkingDirectory(t *testing.T) {
-	sharedBridgeDir := t.TempDir()
+	sharedCacheDir := t.TempDir()
 	homeA := t.TempDir()
 	homeB := t.TempDir()
 	projectA := filepath.Join(t.TempDir(), "project-a")
 	projectB := filepath.Join(t.TempDir(), "project-b")
-	t.Setenv("CCLINE_BRIDGE_DIR", sharedBridgeDir)
+	t.Setenv("CCLINE_CACHE_DIR", sharedCacheDir)
 	writeFile(t, filepath.Join(homeA, "CLAUDE.md"), "home-a")
 	writeFile(t, filepath.Join(projectB, "CLAUDE.md"), "project-b")
 	now := time.Now().Truncate(time.Second)
@@ -285,7 +285,7 @@ func TestConfiguredEffortLevelAvoidsOverlappingClaudeDirDoubleRead(t *testing.T)
 func setClaudeConfigDir(t *testing.T, path string) {
 	t.Helper()
 	t.Setenv("CLAUDE_CONFIG_DIR", path)
-	t.Setenv("CCLINE_BRIDGE_DIR", filepath.Join(path, "ccline", "bridge"))
+	t.Setenv("CCLINE_CACHE_DIR", filepath.Join(path, "ccline", "cache"))
 }
 
 func writeFile(t *testing.T, path string, content string) {
@@ -305,4 +305,25 @@ func writeJSON(t *testing.T, path string, value any) {
 		t.Fatal(err)
 	}
 	writeFile(t, path, string(data))
+}
+
+func TestEnvironmentCacheUsesConfiguredTTLAndCanBeDisabled(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	t.Setenv("CCLINE_CACHE_DIR", t.TempDir())
+	cwd := t.TempDir()
+	now := time.Now().Truncate(time.Second)
+	ttl := 2 * time.Minute
+	options := settingsSnapshotOptions{includeEnvironment: true, useCache: true, cacheTTL: ttl}
+	first := loadSettingsSnapshotAt(cwd, options, now)
+	writeFile(t, filepath.Join(cwd, "CLAUDE.md"), "memory")
+	if got := loadSettingsSnapshotAt(cwd, options, now.Add(time.Minute)); got.EnvironmentCounts() != first.EnvironmentCounts() {
+		t.Fatalf("custom TTL should preserve cached counts: %#v", got)
+	}
+	if got := loadSettingsSnapshotAt(cwd, options, now.Add(ttl)); got.EnvironmentCounts().MemoryFiles != 1 {
+		t.Fatalf("counts should refresh at the configured TTL: %#v", got)
+	}
+	writeFile(t, filepath.Join(cwd, "CLAUDE.local.md"), "local memory")
+	if got := LoadSettingsSnapshotWithCache(cwd, []SegmentID{SegmentEnvironment}, 0); got.EnvironmentCounts().MemoryFiles != 2 {
+		t.Fatalf("zero TTL should collect current counts: %#v", got)
+	}
 }

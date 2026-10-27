@@ -1,17 +1,34 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
 
 type Config struct {
+	Cache    CacheConfig     `toml:"cache"`
 	Style    StyleConfig     `toml:"style"`
 	Layout   LayoutConfig    `toml:"layout"`
 	Segments []SegmentConfig `toml:"segments"`
 	Theme    string          `toml:"theme"`
+}
+
+type CacheConfig struct {
+	GitSeconds         int `toml:"git_seconds"`
+	EnvironmentSeconds int `toml:"environment_seconds"`
+}
+
+func DefaultCacheConfig() CacheConfig {
+	return CacheConfig{GitSeconds: 3, EnvironmentSeconds: 60}
+}
+
+func (c CacheConfig) GitTTL() time.Duration { return time.Duration(c.GitSeconds) * time.Second }
+func (c CacheConfig) EnvironmentTTL() time.Duration {
+	return time.Duration(c.EnvironmentSeconds) * time.Second
 }
 
 type LayoutConfig struct {
@@ -61,26 +78,21 @@ type AnsiColor struct {
 type SegmentID string
 
 const (
-	SegmentModel            SegmentID = "model"
-	SegmentEffort           SegmentID = "effort"
-	SegmentDirectory        SegmentID = "directory"
-	SegmentGit              SegmentID = "git"
-	SegmentContextWindow    SegmentID = "context_window"
-	SegmentCost             SegmentID = "cost"
-	SegmentSession          SegmentID = "session"
-	SegmentEnvironment      SegmentID = "environment"
-	SegmentContextBreakdown SegmentID = "context.breakdown"
-	SegmentCache            SegmentID = "cache"
-	SegmentCacheColdCost    SegmentID = "cache.cold_cost"
-	SegmentTimingTTFT       SegmentID = "timing.ttft"
-	SegmentTimingTPS        SegmentID = "timing.tps"
-	SegmentActivityTools    SegmentID = "activity.tools"
-	SegmentActivityAgents   SegmentID = "activity.agents"
-	SegmentTaskLabel        SegmentID = "task.label"
-	SegmentTaskName         SegmentID = "task.name"
-	SegmentTaskStatus       SegmentID = "task.status"
-	SegmentTaskElapsed      SegmentID = "task.elapsed"
-	SegmentTaskTrend        SegmentID = "task.trend"
+	SegmentModel         SegmentID = "model"
+	SegmentEffort        SegmentID = "effort"
+	SegmentDirectory     SegmentID = "directory"
+	SegmentGit           SegmentID = "git"
+	SegmentContextWindow SegmentID = "context_window"
+	SegmentCost          SegmentID = "cost"
+	SegmentSession       SegmentID = "session"
+	SegmentEnvironment   SegmentID = "environment"
+	SegmentCache         SegmentID = "cache"
+	SegmentCacheColdCost SegmentID = "cache.cold_cost"
+	SegmentTaskLabel     SegmentID = "task.label"
+	SegmentTaskName      SegmentID = "task.name"
+	SegmentTaskStatus    SegmentID = "task.status"
+	SegmentTaskElapsed   SegmentID = "task.elapsed"
+	SegmentTaskTrend     SegmentID = "task.trend"
 )
 
 func Load() (Config, error) {
@@ -96,11 +108,17 @@ func Load() (Config, error) {
 }
 
 func LoadFromPath(path string) (Config, error) {
-	var cfg Config
+	cfg := Config{Cache: DefaultCacheConfig()}
 	if _, err := toml.DecodeFile(path, &cfg); err != nil {
 		return DefaultConfig(), err
 	}
 
+	maxSeconds := int64((1<<63 - 1) / time.Second)
+	for _, seconds := range []int{cfg.Cache.GitSeconds, cfg.Cache.EnvironmentSeconds} {
+		if seconds < 0 || int64(seconds) > maxSeconds {
+			return DefaultConfig(), fmt.Errorf("cache durations must be between 0 and %d seconds", maxSeconds)
+		}
+	}
 	applyConfigDefaults(&cfg)
 	return cfg, nil
 }
@@ -111,6 +129,7 @@ func ConfigPath() string {
 
 func DefaultConfig() Config {
 	return Config{
+		Cache:    DefaultCacheConfig(),
 		Style:    StyleConfig{Separator: " | "},
 		Layout:   defaultLayout(),
 		Segments: buildDefaultSegments(),
@@ -121,9 +140,8 @@ func DefaultConfig() Config {
 func defaultLayout() LayoutConfig {
 	return LayoutConfig{
 		Lines: []LayoutLine{
-			{Segments: []SegmentID{SegmentModel, SegmentEffort, SegmentDirectory, SegmentGit, SegmentEnvironment}},
-			{Segments: []SegmentID{SegmentContextWindow, SegmentContextBreakdown, SegmentCache, SegmentCacheColdCost, SegmentCost, SegmentSession, SegmentTimingTTFT, SegmentTimingTPS}},
-			{Segments: []SegmentID{SegmentActivityTools, SegmentActivityAgents}},
+			{Segments: []SegmentID{SegmentModel, SegmentEffort, SegmentDirectory, SegmentGit, SegmentContextWindow}},
+			{Segments: []SegmentID{SegmentEnvironment, SegmentCache, SegmentCacheColdCost, SegmentCost, SegmentSession}},
 		},
 		Task: []SegmentID{SegmentTaskStatus, SegmentTaskName, SegmentTaskLabel, SegmentTaskElapsed, SegmentTaskTrend},
 	}
@@ -212,40 +230,38 @@ func applyConfigDefaults(cfg *Config) {
 	}
 }
 
-func color16(value uint8) *AnsiColor {
-	return &AnsiColor{C16: &value}
+func paletteColor(value uint8) *AnsiColor {
+	if value < 16 {
+		return &AnsiColor{C16: &value}
+	}
+	return &AnsiColor{C256: &value}
 }
 
 type segmentDefaults struct {
-	id      SegmentID
-	enabled bool
-	emoji   string
-	iconC16 uint8
-	textC16 uint8
-	options map[string]any
+	id        SegmentID
+	enabled   bool
+	emoji     string
+	iconColor uint8
+	textColor uint8
+	options   map[string]any
 }
 
 var defaultSegmentDefs = []segmentDefaults{
 	{SegmentModel, true, "🤖", 14, 14, nil},
-	{SegmentEffort, true, "", 13, 13, nil},
+	{SegmentEffort, true, "", 14, 14, nil},
 	{SegmentDirectory, true, "📁", 11, 10, nil},
 	{SegmentGit, true, "🐙", 12, 12, nil},
 	{SegmentContextWindow, true, "💿", 13, 13, nil},
 	{SegmentCost, false, "💰", 3, 3, nil},
 	{SegmentSession, false, "⏱️", 2, 2, nil},
-	{SegmentEnvironment, true, "🧰", 14, 14, nil},
-	{SegmentContextBreakdown, true, "🔈", 13, 13, nil},
-	{SegmentCache, true, "🔥", 6, 6, nil},
+	{SegmentEnvironment, true, "🧰", 250, 250, nil},
+	{SegmentCache, true, "🔥", 208, 208, nil},
 	{SegmentCacheColdCost, true, "💲", 3, 3, nil},
-	{SegmentTimingTTFT, true, "⌛", 11, 11, nil},
-	{SegmentTimingTPS, true, "⚡", 14, 14, nil},
-	{SegmentActivityTools, true, "✏️", 12, 12, nil},
-	{SegmentActivityAgents, true, "👥", 14, 14, nil},
 	{SegmentTaskLabel, true, "↳", 11, 11, nil},
 	{SegmentTaskName, true, "👤", 14, 14, nil},
 	{SegmentTaskStatus, true, "", 10, 10, nil},
 	{SegmentTaskElapsed, true, "⏱️", 11, 11, nil},
-	{SegmentTaskTrend, true, "📈", 13, 13, nil},
+	{SegmentTaskTrend, true, "💿", 13, 13, nil},
 }
 
 func buildDefaultSegments() []SegmentConfig {
@@ -259,7 +275,7 @@ func buildDefaultSegments() []SegmentConfig {
 			ID:      d.id,
 			Enabled: d.enabled,
 			Icon:    IconConfig{Emoji: d.emoji},
-			Colors:  ColorConfig{Icon: color16(d.iconC16), Text: color16(d.textC16)},
+			Colors:  ColorConfig{Icon: paletteColor(d.iconColor), Text: paletteColor(d.textColor)},
 			Options: opts,
 		}
 	}

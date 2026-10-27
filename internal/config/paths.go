@@ -37,10 +37,10 @@ func ModelsPath() string {
 	return filepath.Join(CclineDir(), "models.toml")
 }
 
-func BridgeDir() string {
-	path := strings.TrimSpace(os.Getenv("CCLINE_BRIDGE_DIR"))
+func CacheDir() string {
+	path := strings.TrimSpace(os.Getenv("CCLINE_CACHE_DIR"))
 	if path == "" {
-		return filepath.Join(CclineDir(), "bridge")
+		return filepath.Join(CclineDir(), "cache")
 	}
 	if home, err := os.UserHomeDir(); err == nil {
 		if path == "~" {

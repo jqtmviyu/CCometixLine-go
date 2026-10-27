@@ -3,6 +3,7 @@ package segments
 import (
 	"os/exec"
 	"strings"
+	"time"
 
 	"ccometixline-go/internal/protocol"
 )
@@ -21,11 +22,12 @@ const (
 )
 
 type GitSegment struct {
-	Input protocol.InputData
+	Input    protocol.InputData
+	CacheTTL time.Duration
 }
 
 func (s GitSegment) Collect() *SegmentData {
-	info, ok := getGitInfo(s.Input.Workspace.CurrentDir)
+	info, ok := getCachedGitInfo(s.Input.Workspace.CurrentDir, s.CacheTTL, time.Now())
 	if !ok {
 		return nil
 	}

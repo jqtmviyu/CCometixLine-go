@@ -140,9 +140,7 @@ func TestGenerateUsesDefaultEmojiIcons(t *testing.T) {
 		config.SegmentEffort,
 		config.SegmentGit,
 		config.SegmentContextWindow,
-		config.SegmentContextBreakdown,
 		config.SegmentCache,
-		config.SegmentTimingTPS,
 	}
 	cfg.Layout.Lines = []config.LayoutLine{{Segments: ids}}
 
@@ -151,13 +149,11 @@ func TestGenerateUsesDefaultEmojiIcons(t *testing.T) {
 		configs[segment.ID] = segment
 	}
 	values := map[config.SegmentID]string{
-		config.SegmentModel:            "Sonnet",
-		config.SegmentEffort:           "high",
-		config.SegmentGit:              "main",
-		config.SegmentContextWindow:    "62% · 124k tokens",
-		config.SegmentContextBreakdown: "msgs 82k",
-		config.SegmentCache:            "warm 4m",
-		config.SegmentTimingTPS:        "74 tok/s",
+		config.SegmentModel:         "Sonnet",
+		config.SegmentEffort:        "high",
+		config.SegmentGit:           "main",
+		config.SegmentContextWindow: "62% · 124k tokens",
+		config.SegmentCache:         "warm 4m",
 	}
 	items := make([]segments.CollectedSegment, 0, len(ids))
 	for _, id := range ids {
@@ -168,7 +164,7 @@ func TestGenerateUsesDefaultEmojiIcons(t *testing.T) {
 	}
 
 	got := ansi.Strip((StatusLineGenerator{Config: cfg}).Generate(items))
-	want := "🤖 Sonnet · high | 🐙 main | 💿 62% · 124k tokens | 🔈 msgs 82k | 🔥 warm 4m | ⚡ 74 tok/s"
+	want := "🤖 Sonnet · high | 🐙 main | 💿 62% · 124k tokens | 🔥 warm 4m"
 	if got != want {
 		t.Fatalf("unexpected emoji status line: got %q, want %q", got, want)
 	}
@@ -229,6 +225,35 @@ func setSegmentEnabled(segments []config.SegmentConfig, id config.SegmentID, ena
 		if segments[i].ID == id {
 			segments[i].Enabled = enabled
 			return
+		}
+	}
+}
+
+func TestModelEffortPairSharesModelStyle(t *testing.T) {
+	modelColor, effortColor := uint8(12), uint8(13)
+	model := config.SegmentConfig{
+		ID:     config.SegmentModel,
+		Colors: config.ColorConfig{Text: &config.AnsiColor{C16: &modelColor}},
+		Styles: config.TextStyleConfig{TextBold: true},
+	}
+	effort := config.SegmentConfig{
+		ID:     config.SegmentEffort,
+		Colors: config.ColorConfig{Text: &config.AnsiColor{C16: &effortColor}},
+	}
+	for _, ids := range [][]config.SegmentID{
+		{config.SegmentModel, config.SegmentEffort},
+		{config.SegmentEffort, config.SegmentModel},
+	} {
+		cfg := config.DefaultConfig()
+		cfg.Layout.Lines = []config.LayoutLine{{Segments: ids}}
+		items := []segments.CollectedSegment{
+			{Config: model, Data: segments.SegmentData{Primary: "Sonnet"}},
+			{Config: effort, Data: segments.SegmentData{Primary: "high"}},
+		}
+		texts := map[config.SegmentID]string{config.SegmentModel: "Sonnet", config.SegmentEffort: "high"}
+		want := ApplyStyle(texts[ids[0]], model.Colors.Text, true) + ApplyStyle(" · ", model.Colors.Text, true) + ApplyStyle(texts[ids[1]], model.Colors.Text, true)
+		if got := (StatusLineGenerator{Config: cfg}).Generate(items); got != want {
+			t.Fatalf("model, separator and effort should share style: got %q, want %q", got, want)
 		}
 	}
 }

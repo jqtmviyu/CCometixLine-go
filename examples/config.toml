@@ -1,5 +1,10 @@
 theme = "default"
 
+# 单位为秒；0 表示每次刷新重新采集。
+[cache]
+git_seconds = 3
+environment_seconds = 60
+
 [style]
 separator = " | "
 
@@ -7,10 +12,7 @@ separator = " | "
 task = ["task.status", "task.name", "task.label", "task.elapsed", "task.trend"]
 
 [[layout.lines]]
-segments = ["model", "effort", "directory", "git", "environment"]
+segments = ["model", "effort", "directory", "git", "context_window"]
 
 [[layout.lines]]
-segments = ["context_window", "context.breakdown", "cache", "cache.cold_cost", "cost", "session", "timing.ttft", "timing.tps"]
-
-[[layout.lines]]
-segments = ["activity.tools", "activity.agents"]
+segments = ["environment", "cache", "cache.cold_cost", "cost", "session"]

@@ -6,13 +6,9 @@ import (
 )
 
 func CollectAll(cfg config.Config, modelConfig config.ModelConfig, input protocol.InputData) []CollectedSegment {
-	return CollectAllWithBridge(cfg, modelConfig, input, nil)
-}
-
-func CollectAllWithBridge(cfg config.Config, modelConfig config.ModelConfig, input protocol.InputData, bridge *protocol.Bridge) []CollectedSegment {
 	results := []CollectedSegment{}
 	selectedSegments := collectableSegments(cfg)
-	settings := loadSettingsSnapshot(selectedSegments, input.Workspace.CurrentDir)
+	settings := loadSettingsSnapshot(selectedSegments, input, cfg.Cache)
 
 	for _, segmentConfig := range selectedSegments {
 		var segment Segment
@@ -24,7 +20,7 @@ func CollectAllWithBridge(cfg config.Config, modelConfig config.ModelConfig, inp
 		case config.SegmentDirectory:
 			segment = DirectorySegment{Input: input}
 		case config.SegmentGit:
-			segment = GitSegment{Input: input}
+			segment = GitSegment{Input: input, CacheTTL: cfg.Cache.GitTTL()}
 		case config.SegmentContextWindow:
 			segment = ContextWindowSegment{Input: input, ModelConfig: modelConfig}
 		case config.SegmentCost:
@@ -33,20 +29,10 @@ func CollectAllWithBridge(cfg config.Config, modelConfig config.ModelConfig, inp
 			segment = SessionSegment{Input: input}
 		case config.SegmentEnvironment:
 			segment = EnvironmentSegment{Input: input, Settings: settings}
-		case config.SegmentContextBreakdown:
-			segment = ContextBreakdownSegment{Bridge: bridge}
 		case config.SegmentCache:
 			segment = CacheSegment{Input: input}
 		case config.SegmentCacheColdCost:
 			segment = CacheColdCostSegment{Input: input, ModelConfig: modelConfig}
-		case config.SegmentTimingTTFT:
-			segment = TimingTTFTSegment{Bridge: bridge}
-		case config.SegmentTimingTPS:
-			segment = TimingTPSSegment{Bridge: bridge}
-		case config.SegmentActivityTools:
-			segment = ActivityToolsSegment{Bridge: bridge}
-		case config.SegmentActivityAgents:
-			segment = ActivityAgentsSegment{Bridge: bridge}
 		default:
 			continue
 		}
@@ -88,12 +74,16 @@ func collectableSegments(cfg config.Config) []config.SegmentConfig {
 	return selected
 }
 
-func loadSettingsSnapshot(segments []config.SegmentConfig, cwd string) config.SettingsSnapshot {
-	segmentIDs := make([]config.SegmentID, len(segments))
-	for i, segment := range segments {
-		segmentIDs[i] = segment.ID
+func loadSettingsSnapshot(selected []config.SegmentConfig, input protocol.InputData, cache config.CacheConfig) config.SettingsSnapshot {
+	segmentIDs := make([]config.SegmentID, 0, len(selected))
+	_, hasDirectEffort := directEffort(input)
+	for _, segment := range selected {
+		if segment.ID == config.SegmentEffort && hasDirectEffort {
+			continue
+		}
+		segmentIDs = append(segmentIDs, segment.ID)
 	}
-	return config.LoadSettingsSnapshotForSegments(cwd, segmentIDs)
+	return config.LoadSettingsSnapshotWithCache(input.Workspace.CurrentDir, segmentIDs, cache.EnvironmentTTL())
 }
 
 type CollectedSegment struct {

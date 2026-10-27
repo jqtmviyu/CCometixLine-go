@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"ccometixline-go/internal/protocol"
 )
@@ -157,5 +158,56 @@ func runGitCmd(t *testing.T, dir string, args ...string) {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v failed: %v\n%s", args, err, string(output))
+	}
+}
+
+func TestGitCacheRefreshesChangesAndSeparatesDirectories(t *testing.T) {
+	t.Setenv("CCLINE_CACHE_DIR", t.TempDir())
+	dir := t.TempDir()
+	runGitCmd(t, dir, "init", "-b", "main")
+	now := time.Now().Truncate(time.Second)
+	ttl := 3 * time.Second
+	first, ok := getCachedGitInfo(dir, ttl, now)
+	if !ok || first.Branch != "main" || first.Status != GitStatusClean {
+		t.Fatalf("initial status: %+v, %v", first, ok)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "new.txt"), []byte("new"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cached, ok := getCachedGitInfo(dir, ttl, now.Add(time.Second))
+	if !ok || cached != first {
+		t.Fatalf("expected cached clean status: %+v", cached)
+	}
+	refreshed, ok := getCachedGitInfo(dir, ttl, now.Add(ttl))
+	if !ok || refreshed.Status != GitStatusDirty {
+		t.Fatalf("expected refreshed dirty status: %+v", refreshed)
+	}
+	runGitCmd(t, dir, "symbolic-ref", "HEAD", "refs/heads/feature")
+	immediate, ok := getCachedGitInfo(dir, 0, now.Add(ttl))
+	if !ok || immediate.Branch != "feature" {
+		t.Fatalf("zero TTL should read current branch: %+v", immediate)
+	}
+	other := t.TempDir()
+	runGitCmd(t, other, "init", "-b", "other")
+	distinct, ok := getCachedGitInfo(other, ttl, now)
+	if !ok || distinct.Branch != "other" || distinct.Status != GitStatusClean {
+		t.Fatalf("mixed directory caches: %+v", distinct)
+	}
+}
+
+func TestGitCacheRechecksNewRepositoryAfterTTL(t *testing.T) {
+	t.Setenv("CCLINE_CACHE_DIR", t.TempDir())
+	dir := t.TempDir()
+	now := time.Now().Truncate(time.Second)
+	ttl := 3 * time.Second
+	if _, ok := getCachedGitInfo(dir, ttl, now); ok {
+		t.Fatal("expected no repository")
+	}
+	runGitCmd(t, dir, "init", "-b", "main")
+	if _, ok := getCachedGitInfo(dir, ttl, now.Add(time.Second)); ok {
+		t.Fatal("expected cached absence")
+	}
+	if info, ok := getCachedGitInfo(dir, ttl, now.Add(ttl)); !ok || info.Branch != "main" {
+		t.Fatalf("repository should appear after expiry: %+v, %v", info, ok)
 	}
 }

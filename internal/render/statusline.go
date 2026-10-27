@@ -14,14 +14,26 @@ type StatusLineGenerator struct {
 }
 
 type renderedItem struct {
-	id   config.SegmentID
-	text string
+	id     config.SegmentID
+	text   string
+	config config.SegmentConfig
 }
 
 func (g StatusLineGenerator) Generate(items []segments.CollectedSegment) string {
+	var modelConfig *config.SegmentConfig
+	for i := range items {
+		if items[i].Config.ID == config.SegmentModel {
+			modelConfig = &items[i].Config
+		}
+	}
 	byID := make(map[config.SegmentID]renderedItem, len(items))
 	order := make([]config.SegmentID, 0, len(items))
 	for _, item := range items {
+		// 模型和思考力度使用同一套样式，修改模型配色时一起生效。
+		if item.Config.ID == config.SegmentEffort && modelConfig != nil {
+			item.Config.Colors = modelConfig.Colors
+			item.Config.Styles = modelConfig.Styles
+		}
 		text := g.renderSegment(item.Config, item.Data)
 		if text == "" {
 			continue
@@ -29,7 +41,7 @@ func (g StatusLineGenerator) Generate(items []segments.CollectedSegment) string 
 		if _, exists := byID[item.Config.ID]; !exists {
 			order = append(order, item.Config.ID)
 		}
-		byID[item.Config.ID] = renderedItem{id: item.Config.ID, text: text}
+		byID[item.Config.ID] = renderedItem{id: item.Config.ID, text: text, config: item.Config}
 	}
 
 	layout := g.Config.Layout.Lines
@@ -58,7 +70,7 @@ func (g StatusLineGenerator) GenerateTaskLine(items []segments.CollectedSegment,
 	for _, item := range items {
 		text := g.renderSegment(item.Config, item.Data)
 		if text != "" {
-			parts = append(parts, renderedItem{id: item.Config.ID, text: text})
+			parts = append(parts, renderedItem{id: item.Config.ID, text: text, config: item.Config})
 		}
 	}
 	if len(parts) == 0 {
@@ -119,9 +131,14 @@ func (g StatusLineGenerator) joinWithWhiteSeparators(parts []renderedItem) strin
 		if i > 0 {
 			separator := g.Config.Style.Separator
 			if isModelEffortPair(parts[i-1].id, part.id) {
-				separator = " · "
+				model := part.config
+				if parts[i-1].id == config.SegmentModel {
+					model = parts[i-1].config
+				}
+				result.WriteString(ApplyStyle(" · ", model.Colors.Text, model.Styles.TextBold))
+			} else {
+				result.WriteString("\x1b[37m" + separator + "\x1b[0m")
 			}
-			result.WriteString("\x1b[37m" + separator + "\x1b[0m")
 		}
 		result.WriteString(part.text)
 	}

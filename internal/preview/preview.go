@@ -12,21 +12,16 @@ import (
 )
 
 var samples = map[config.SegmentID]segments.SegmentData{
-	config.SegmentModel:            {Primary: "Sonnet 4.5"},
-	config.SegmentEffort:           {Primary: "high"},
-	config.SegmentDirectory:        {Primary: "sample-project"},
-	config.SegmentGit:              {Primary: "main", Secondary: "●"},
-	config.SegmentContextWindow:    {Primary: "62% · 124k tokens"},
-	config.SegmentCost:             {Primary: "$0.42"},
-	config.SegmentSession:          {Primary: "18m42s", Secondary: "+24 -6"},
-	config.SegmentEnvironment:      {Primary: "memory 3 · skill 5 · mcp 2 · plugin 1"},
-	config.SegmentContextBreakdown: {Primary: "msgs 82k · tools 21k · sys 12k"},
-	config.SegmentCache:            {Primary: "warm 4m · hit 92% · miss 1"},
-	config.SegmentCacheColdCost:    {Primary: "~$0.08"},
-	config.SegmentTimingTTFT:       {Primary: "0.8s"},
-	config.SegmentTimingTPS:        {Primary: "74 tok/s"},
-	config.SegmentActivityTools:    {Primary: "Edit · Bash · +1 · 18s"},
-	config.SegmentActivityAgents:   {Primary: "2 running · Explore"},
+	config.SegmentModel:         {Primary: "Sonnet 4.5"},
+	config.SegmentEffort:        {Primary: "high"},
+	config.SegmentDirectory:     {Primary: "sample-project"},
+	config.SegmentGit:           {Primary: "main", Secondary: "●"},
+	config.SegmentContextWindow: {Primary: "62% · 124k tokens"},
+	config.SegmentCost:          {Primary: "$0.42"},
+	config.SegmentSession:       {Primary: "18m42s", Secondary: "+24 -6"},
+	config.SegmentEnvironment:   {Primary: "memory 3 · skill 5 · mcp 2 · plugin 1"},
+	config.SegmentCache:         {Primary: "warm 4m · hit 92% · miss 1"},
+	config.SegmentCacheColdCost: {Primary: "~$0.08"},
 }
 
 func Render(cfg config.Config) string {

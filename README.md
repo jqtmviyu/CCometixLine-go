@@ -6,11 +6,10 @@
 
 - 读取 Claude Code statusline stdin JSON，并按官方输入 token 口径展示上下文占用
 - 支持缓存状态、缓存命中率、miss 原因；冷缓存成本只在模型价格和 TTL 写入倍率已配置时显示
-- 支持通过可选本地 companion plugin 读取上下文分类、TTFT/TPS、运行中的工具和 agent
 - 支持 `subagentStatusLine` 的任务名称、状态、label、耗时和 token 趋势
 - 支持显式固定行布局：默认两行，可按 segment 自定义字段和断点，不按宽度自动折行
 - 输出 ANSI statusline
-- segment：model、effort、directory、git、context_window、context.breakdown、cache、cache.cold_cost、timing.ttft、timing.tps、activity.tools、activity.agents、cost、session、environment 和 task.*
+- segment：model、effort、directory、git、context_window、cache、cache.cold_cost、cost、session、environment 和 task.*
 
 ## 未实现
 - `--config` TUI
@@ -45,7 +44,7 @@ go run ./cmd/ccline < ./testdata/input/basic.json
 go run ./cmd/ccline preview
 ```
 
-预览使用固定示例数据，不读取 Git 状态、项目 settings、真实 bridge 或 environment cache，也不会修改配置。它展示当前启用 segment 的图标、颜色和显式行布局；示例值不代表实时会话。
+预览使用固定示例数据，不读取 Git 状态、项目 settings、本地缓存，也不会修改配置。它展示当前启用 segment 的图标、颜色和显式行布局；示例值不代表实时会话。
 
 ## 测试
 
@@ -90,19 +89,19 @@ go test ./...
 - skill 子目录支持指向目录的软链接，适用于共享安装的 skills。
 - `plugins` 统计 `~/.claude/settings.json`、`<cwd>/.claude/settings.json`、`<cwd>/.claude/settings.local.json` 里的 `enabledPlugins=true`；按名称去重
 - 状态栏将环境计数显示为 `memory 3 · skill 5 · mcp 2 · plugin 1`。
-- `mem/skills/mcp/plugins` 汇总按配置目录与当前工作目录缓存 10 秒，缓存只保存计数；缓存写入 bridge 存储目录下的独立文件，不依赖 companion，也不改会话 bridge。变更最多延迟 10 秒反映。
+- `mem/skills/mcp/plugins` 汇总按配置目录与当前工作目录缓存 60 秒，缓存只保存计数；缓存写入独立的本地缓存文件。缓存到期后的首次刷新重新统计，可通过 `[cache]` 调整时长。
 
 ## 配置与默认行为
 
 - 默认读取 `~/.claude/ccline/config.toml` 和 `~/.claude/ccline/models.toml`；设置 `CLAUDE_CONFIG_DIR` 后改为 `<CLAUDE_CONFIG_DIR>/ccline/`。
-- `config.toml` 用 `[[layout.lines]]` 固定分组和显示顺序；默认三行，添加、删除或合并分组即可配置一行、三行或任意自定义断点。没有可显示内容的组会省略，因此实际输出可能少于三行。完整样例见 `examples/config.toml`。
+- `config.toml` 用 `[[layout.lines]]` 固定分组和显示顺序；默认两行，添加、删除或合并分组即可配置一行、三行或任意自定义断点。没有可显示内容的组会省略，因此实际输出可能少于两行。完整样例见 `examples/config.toml`。
 - 每组只显示列出的 segment ID；想隐藏字段就从布局中移除，或在 `[[segments]]` 中设为 `enabled = false`。主 statusline 不会按长度自动折行，长行可通过选择字段或增加显式行组控制。运行 `ccline preview` 查看效果。
 - 显示顺序由 layout 决定；不写 `[[segments]]` 时使用内置 segment 默认值。若显式写 `[[segments]]`，列表中的项目同时定义启用状态、图标、颜色和选项，未列出的 segment 不参与渲染。
 - 旧版 Go `[[segments]]` 配置仍可读取，且默认按原顺序排成一行；上游 CCometixLine 的配置格式不兼容。
-- 默认第一行集中模型/力度、工作区/Git 和 memory/skills/MCP/plugins；第二行集中 tokens/msgs、缓存、费用/会话与 TTFT/TPS；第三行集中 tools/agents 活动。`cost`、`session` 默认关闭。可按需调整布局和启用字段。
+- 默认第一行集中模型/力度、工作区/Git，最后显示 tokens；第二行从 memory/skills/MCP/plugins 开始，随后显示缓存、费用/会话。`cost`、`session` 默认关闭。可按需调整布局和启用字段。
 - 旧配置中的 `style.wrap_width` 会被忽略；主 statusline 不做宽度检测或自动折行。
 - `effort` 读取用户级设置时跟随 `CLAUDE_CONFIG_DIR`。
-- 状态栏只使用一套 emoji 图标，不提供 Nerd Font 档位。默认图标：模型 `🤖`、Git `🐙`、environment `🧰`、tokens `💿`、warm cache `🔥`、cold cost `💲`、msgs `🔈`、tools `✏️`、TPS `⚡`；effort 无图标，并与模型相邻显示为 `模型 · 思考力度`。
+- 状态栏只使用一套 emoji 图标，不提供 Nerd Font 档位。默认图标：模型 `🤖`、Git `🐙`、environment `🧰`、tokens `💿`、warm cache `🔥`、cold cost `💲`；effort 无图标，并与模型相邻显示为 `模型 · 思考力度`，思考力度和中间的 `·` 沿用模型配色及文字样式。
 - `task.status` 使用 `🏃` 表示 running、`✓` 表示 completed、`✗` 表示 failed。
 - 自定义 segment 图标使用 `icon.emoji`：
 
@@ -125,24 +124,28 @@ input_price_usd_per_million = 2.5
 cache_write_multipliers = { "5m" = 1.25, "1h" = 2.0 }
 ```
 
-## Companion 指标
+## 采集开销与缓存
 
-`context.breakdown`、`timing.ttft`、`timing.tps`、`activity.tools` 和 `activity.agents` 需要 Claude Code 2.1.287+ 及本地 companion plugin。它只观察 Claude Code 本地事件并写入 `~/.claude/ccline/bridge/<session_id>.json`，不发起网络请求。未安装时这些 segment 自动隐藏；缓存字段由 statusline stdin 提供，需要 Claude Code 2.1.251+。
+状态栏刷新与数据采集分开控制。当前目录直接来自 stdin；Git 默认按工作目录缓存 3 秒，memory/skills/MCP/plugins 计数默认缓存 60 秒。到期后的首次刷新同步采集，期间显示上次结果，因此更新延迟还取决于 Claude Code 的刷新间隔。
 
-- `timing.ttft` 是模型请求发出到首个流片段的延迟。
-- `timing.tps` 是输出 token 数除以首个流片段到流结束的时间；只计主会话，不含 agent 请求，流时长不足 100ms 时不更新。它是最近完成请求的平均生成速度，不是即时速度。
-- `cache` 直接显示 Claude Code 提供的会话缓存状态、命中率、miss 数和最后 miss 原因；命中率沿用 Claude Code 的输入 token 统计，不从单次缓存 token 估算。
-- `cache.cold_cost` 估算公式为 `recache_tokens_if_cold × input_price_usd_per_million × cache_write_multiplier ÷ 1,000,000`，缺少任一价格参数时隐藏。
+在 `config.toml` 中配置缓存时长，单位为秒；`0` 表示每次重新采集：
 
-companion mod 资源随 ccline 二进制内嵌，因此可从任意目录安装，无需额外下载或保留仓库 checkout：
-
-```bash
-ccline mod install
-ccline mod status
-ccline mod uninstall
+```toml
+[cache]
+git_seconds = 3
+environment_seconds = 60
 ```
 
-`install` 会把内嵌资源写入 `<CLAUDE_CONFIG_DIR>/ccline/mod`（默认 `~/.claude/ccline/mod`），注册本地 user-scope marketplace 并安装或更新插件；Claude Code 需为 2.1.287 或更新版本。它还会创建权限为 `0700` 的 bridge 目录。安装或卸载后，在当前 Claude Code 会话运行 `/reload-plugins`；后续会话事件才开始写入 bridge。`status` 显示插件版本和 bridge 快照状态；`uninstall` 保留 bridge 数据与 ccline 配置，并在没有其他 user-scope 插件使用时移除 marketplace。
+缓存默认保存到 `~/.claude/ccline/cache/` 下的 `git/` 和 `environment/` 子目录；设置 `CLAUDE_CONFIG_DIR` 后使用 `<CLAUDE_CONFIG_DIR>/ccline/cache/`，也可以通过 `CCLINE_CACHE_DIR` 单独指定缓存根目录。Git 缓存也保存“当前目录没有仓库”的结果，新建仓库后在到期刷新时显示；切换目录使用各自的缓存。缓存采用完整快照替换，无需同步落盘，写入失败时继续输出本次采集结果。
+
+从布局移除 `git`、`environment` 或禁用对应 segment，会跳过其采集。effort 已由有效环境变量或 stdin 确定时，跳过为 effort 读取 settings；环境计数缓存过期时仍需读取 settings。
+
+## 缓存与子任务输入
+
+状态栏直接使用 Claude Code 提供的 stdin JSON，无需额外安装插件。
+
+- `cache` 显示 Claude Code 提供的会话缓存状态、命中率、miss 数和最后 miss 原因；命中率沿用 Claude Code 的输入 token 统计，不从单次缓存 token 估算。缺少缓存输入时隐藏。
+- `cache.cold_cost` 估算公式为 `recache_tokens_if_cold × input_price_usd_per_million × cache_write_multiplier ÷ 1,000,000`，缺少任一价格参数时隐藏。
 
 `task.*` 通过 Claude Code 的 `subagentStatusLine` 输入工作，需要单独把该设置也指向同一个可执行文件；主 statusline 的普通文本协议与 subagent 的 JSONL 输出协议会根据 stdin 自动区分。
 
@@ -165,3 +168,15 @@ Windows 示例：
   }
 }
 ```
+
+## 从带 companion 的旧版升级
+
+新版已移除 companion、`ccline mod` 命令和依赖插件的上下文分类、TTFT/TPS、工具及 agent 活动字段。旧配置中的这些字段会被忽略，其余字段继续按原布局显示。
+
+曾安装旧版插件时，可通过 Claude Code 卸载，并在当前会话执行 `/reload-plugins`：
+
+```bash
+claude plugin uninstall ccline-go@ccometixline-go --scope user
+```
+
+旧版的 `ccline/bridge/`、`ccline/mod/` 文件不会再被读取，也不会自动删除。新版会在独立缓存目录中重建 Git 和环境计数缓存；自定义缓存路径使用 `CCLINE_CACHE_DIR`。

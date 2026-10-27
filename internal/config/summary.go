@@ -34,6 +34,7 @@ type settingsSnapshotOptions struct {
 	includeEnvironment bool
 	includeEffort      bool
 	useCache           bool
+	cacheTTL           time.Duration
 }
 
 func LoadSettingsSnapshot(cwd string) SettingsSnapshot {
@@ -41,7 +42,11 @@ func LoadSettingsSnapshot(cwd string) SettingsSnapshot {
 }
 
 func LoadSettingsSnapshotForSegments(cwd string, segmentIDs []SegmentID) SettingsSnapshot {
-	options := settingsSnapshotOptions{useCache: true}
+	return LoadSettingsSnapshotWithCache(cwd, segmentIDs, environmentCacheTTL)
+}
+
+func LoadSettingsSnapshotWithCache(cwd string, segmentIDs []SegmentID, ttl time.Duration) SettingsSnapshot {
+	options := settingsSnapshotOptions{useCache: ttl > 0, cacheTTL: ttl}
 	for _, id := range segmentIDs {
 		switch id {
 		case SegmentEnvironment:
@@ -65,7 +70,11 @@ func loadSettingsSnapshotAt(cwd string, options settingsSnapshotOptions, now tim
 	var counts EnvironmentCounts
 	cacheHit := false
 	if options.includeEnvironment && options.useCache {
-		counts, cacheHit = readEnvironmentCache(claudeDir, cwd, now)
+		ttl := environmentCacheTTL
+		if options.cacheTTL > 0 {
+			ttl = options.cacheTTL
+		}
+		counts, cacheHit = readEnvironmentCache(claudeDir, cwd, now, ttl)
 	}
 
 	var settingsList []parsedSettings

@@ -50,16 +50,12 @@ func TestDefaultConfigEnablesEnvironmentSegmentWithToolIcon(t *testing.T) {
 func TestDefaultConfigUsesSelectedIconsAndKeepsModelEffortTogether(t *testing.T) {
 	cfg := DefaultConfig()
 	for id, want := range map[SegmentID]string{
-		SegmentModel:            "🤖",
-		SegmentEffort:           "",
-		SegmentGit:              "🐙",
-		SegmentContextWindow:    "💿",
-		SegmentCache:            "🔥",
-		SegmentCacheColdCost:    "💲",
-		SegmentContextBreakdown: "🔈",
-		SegmentTimingTPS:        "⚡",
-		SegmentActivityTools:    "✏️",
-		SegmentActivityAgents:   "👥",
+		SegmentModel:         "🤖",
+		SegmentEffort:        "",
+		SegmentGit:           "🐙",
+		SegmentContextWindow: "💿",
+		SegmentCache:         "🔥",
+		SegmentCacheColdCost: "💲",
 	} {
 		segment := findSegmentConfig(t, cfg, id)
 		if segment.Icon.Emoji != want {
@@ -84,12 +80,11 @@ func findSegmentConfig(t *testing.T, cfg Config, id SegmentID) SegmentConfig {
 	return SegmentConfig{}
 }
 
-func TestDefaultConfigUsesThreeLayoutLines(t *testing.T) {
+func TestDefaultConfigUsesTwoLayoutLines(t *testing.T) {
 	cfg := DefaultConfig()
 	want := []LayoutLine{
-		{Segments: []SegmentID{SegmentModel, SegmentEffort, SegmentDirectory, SegmentGit, SegmentEnvironment}},
-		{Segments: []SegmentID{SegmentContextWindow, SegmentContextBreakdown, SegmentCache, SegmentCacheColdCost, SegmentCost, SegmentSession, SegmentTimingTTFT, SegmentTimingTPS}},
-		{Segments: []SegmentID{SegmentActivityTools, SegmentActivityAgents}},
+		{Segments: []SegmentID{SegmentModel, SegmentEffort, SegmentDirectory, SegmentGit, SegmentContextWindow}},
+		{Segments: []SegmentID{SegmentEnvironment, SegmentCache, SegmentCacheColdCost, SegmentCost, SegmentSession}},
 	}
 	if !reflect.DeepEqual(cfg.Layout.Lines, want) {
 		t.Fatalf("unexpected default layout: got %#v, want %#v", cfg.Layout.Lines, want)
@@ -208,5 +203,31 @@ enabled = true
 	}
 	if len(cfg.Layout.Lines) != 1 || len(cfg.Layout.Lines[0].Segments) != 2 {
 		t.Fatalf("expected legacy segment list preserved as one line, got %#v", cfg.Layout)
+	}
+}
+
+func TestCacheConfigDefaultsAndOverrides(t *testing.T) {
+	for _, tc := range []struct {
+		name, contents string
+		want           CacheConfig
+	}{
+		{"defaults", "theme = 'default'", CacheConfig{GitSeconds: 3, EnvironmentSeconds: 60}},
+		{"partial", "[cache]\ngit_seconds = 7", CacheConfig{GitSeconds: 7, EnvironmentSeconds: 60}},
+		{"disable", "[cache]\ngit_seconds = 0\nenvironment_seconds = 0", CacheConfig{}},
+		{"custom", "[cache]\ngit_seconds = 5\nenvironment_seconds = 120", CacheConfig{GitSeconds: 5, EnvironmentSeconds: 120}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.toml")
+			if err := os.WriteFile(path, []byte(tc.contents), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := LoadFromPath(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.Cache != tc.want {
+				t.Fatalf("cache=%+v, want %+v", cfg.Cache, tc.want)
+			}
+		})
 	}
 }
