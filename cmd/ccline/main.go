@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 
 	"ccometixline-go/internal/config"
 	"ccometixline-go/internal/preview"
@@ -15,11 +14,6 @@ import (
 )
 
 const maxInputBytes = 1 << 20
-
-type taskLine struct {
-	ID      string `json:"id"`
-	Content string `json:"content"`
-}
 
 func main() {
 	code := run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr, stdinIsTerminal(os.Stdin))
@@ -65,20 +59,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, terminal bool
 		return 1
 	}
 
-	taskInput, isTaskInput, err := protocol.DecodeSubagentInput(data)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 1
-	}
 	layout := cfg.ResolveLayout()
 	generator := render.StatusLineGenerator{Style: cfg.Style, Layout: layout}
-	if isTaskInput {
-		if err := writeTaskLines(stdout, generator, *taskInput, time.Now()); err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
-		return 0
-	}
 
 	var input protocol.InputData
 	if err := json.Unmarshal(data, &input); err != nil {
@@ -90,19 +72,4 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, terminal bool
 	collected := collector.Collect(input)
 	fmt.Fprintln(stdout, generator.Generate(collected))
 	return 0
-}
-
-func writeTaskLines(writer io.Writer, generator render.StatusLineGenerator, input protocol.SubagentInput, now time.Time) error {
-	encoder := json.NewEncoder(writer)
-	for _, task := range input.Tasks {
-		items := segments.CollectTask(generator.Layout.Task, task, now)
-		content := generator.GenerateTaskLine(items, input.Columns)
-		if content == "" {
-			continue
-		}
-		if err := encoder.Encode(taskLine{ID: task.ID, Content: content}); err != nil {
-			return err
-		}
-	}
-	return nil
 }

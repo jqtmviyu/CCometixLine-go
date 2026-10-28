@@ -6,10 +6,9 @@
 
 - 读取 Claude Code statusline stdin JSON，并按官方输入 token 口径展示上下文占用
 - 支持缓存命中率，跟在同一行的 tokens 后面显示
-- 支持 `subagentStatusLine` 的任务名称、状态、label、耗时和 token 趋势
 - 支持显式固定行布局：默认两行，可按 segment 自定义字段和断点，不按宽度自动折行
 - 输出 ANSI statusline
-- segment：model、directory、git、context_window、cost、session、environment 和 task.*
+- segment：model、directory、git、context_window、cost、session、environment
 
 ## 未实现
 - `--config` TUI
@@ -103,7 +102,6 @@ go test ./...
 - 默认第一行集中模型/力度、工作区/Git，最后显示 tokens 和命中率；第二行从 memory/skills/MCP/plugins 开始，随后显示费用/会话。`cost`、`session` 默认关闭。可按需调整布局和启用字段。
 - 思考力度读取用户级设置时跟随 `CLAUDE_CONFIG_DIR`。
 - 状态栏只使用一套 emoji 图标，不提供 Nerd Font 档位。默认图标：模型 `🤖`、Git `🐙`、environment `🧰`、tokens `💿`；思考力度属于 model 段，显示为 `模型 · 思考力度`，整段沿用模型配色；命中率属于 tokens 段，紧跟其后显示为 `62% · 124k tokens · hit 97%`，整段共用 tokens 配色。
-- `task.status` 使用 `🏃` 表示 running、`✓` 表示 completed、`✗` 表示 failed。
 - 自定义 segment 图标使用 `icon.emoji`：
 
 ```toml
@@ -131,13 +129,11 @@ environment_seconds = 60
 
 从布局移除 `git`、`environment` 或禁用对应 segment，会跳过其采集。思考力度已由有效环境变量或 stdin 确定时，跳过读取 settings；环境计数缓存过期时仍需读取 settings。
 
-## 缓存与子任务输入
+## 输入与命中率
 
 状态栏直接使用 Claude Code 提供的 stdin JSON。
 
 - `context_window` 在 tokens 后面附带命中率，例如 `62% · 124k tokens · hit 97%`；命中率沿用 Claude Code 的输入 token 统计，不从单次缓存 token 估算。缓存未观测或请求数不足 2 次时不显示。
-
-`task.*` 通过 Claude Code 的 `subagentStatusLine` 输入工作，需要单独把该设置也指向同一个可执行文件；主 statusline 的普通文本协议与 subagent 的 JSONL 输出协议会根据 stdin 自动区分。
 
 ## 接入 Claude Code
 
@@ -151,16 +147,12 @@ Windows 示例：
     "type": "command",
     "command": "C:\\Users\\demo\\.claude\\ccline\\ccline.exe",
     "refreshInterval": 2
-  },
-  "subagentStatusLine": {
-    "type": "command",
-    "command": "C:\\Users\\demo\\.claude\\ccline\\ccline.exe"
   }
 }
 ```
 
 ## 内部数据流
 
-配置加载后生成一次有效布局，主状态栏、子任务与预览共用字段选择和顺序。实时路径按布局读取所需显示事实，再交给格式化与 ANSI 渲染；子任务字段的默认配置在遍历任务前准备。
+配置加载后生成一次有效布局，主状态栏与预览共用字段选择和顺序。实时路径按布局读取所需显示事实，再交给格式化与 ANSI 渲染。
 
 外部设置与环境读取集中在 `internal/observation`：根据本次需要判断 effort 的来源优先级，并共享 settings 读取；环境计数继续沿用原有缓存。预览提供固定事实，复用实时格式化逻辑。

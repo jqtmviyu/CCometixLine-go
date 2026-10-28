@@ -990,25 +990,6 @@ Git Bash 将未引用的反斜杠视为转义字符，因此 Windows 风格的�
   ```
 </CodeGroup>
 
-## 子代理状态行
-
-`subagentStatusLine` 设置为代理面板中显示的每个[子代理](/zh-CN/sub-agents)呈现自定义行体。使用它来替换默认的 `name · description · token count` 行为你自己的格式。
-
-```json theme={null}
-{
-  "subagentStatusLine": {
-    "type": "command",
-    "command": "~/.claude/subagent-statusline.sh"
-  }
-}
-```
-
-该命令在每个刷新周期运行一次，所有可见的子代理行作为单个 JSON 对象传递到 stdin。输入包括[基本钩子字段](/zh-CN/hooks#common-input-fields)加上 `columns`（可用行宽）和 `tasks` 数组，其中每个任务有 `id`、`name`、`type`、`status`、`description`、`label`、`startTime`、`tokenCount`、`tokenSamples` 和 `cwd`。
-
-将一个 JSON 行写入 stdout，用于你想覆盖的每一行，形式为 `{"id": "<task id>", "content": "<row body>"}` 。`content` 字符串按原样呈现，包括 ANSI 颜色和 OSC 8 超链接。省略任务的 `id` 以保持该行的默认呈现；发出空 `content` 字符串以隐藏它。
-
-适用于 `statusLine` 的相同信任和 `disableAllHooks` 门控也适用于此处。插件可以在其[`settings.json`](/zh-CN/plugins-reference#standard-plugin-layout)中提供默认的 `subagentStatusLine`。
-
 ## 提示
 
 * **使用模拟输入测试**：`echo '{"model":{"display_name":"Opus"},"workspace":{"current_dir":"/home/user/project"},"context_window":{"used_percentage":25},"session_id":"test-session-abc"}' | ./statusline.sh`

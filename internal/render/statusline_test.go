@@ -59,18 +59,6 @@ func TestGenerateRespectsExplicitThreeLineLayout(t *testing.T) {
 	}
 }
 
-func TestGenerateTaskLineStillTruncatesToColumns(t *testing.T) {
-	cfg := config.DefaultConfig()
-	items := []segments.CollectedSegment{{
-		Config: config.SegmentConfig{ID: config.SegmentTaskName, Icon: config.IconConfig{Emoji: "↳"}},
-		Data:   segments.SegmentData{Primary: "a-very-long-task-name"},
-	}}
-	result := (StatusLineGenerator{Style: cfg.Style, Layout: cfg.ResolveLayout()}).GenerateTaskLine(items, 8)
-	if ansi.StringWidth(result) > 8 || !strings.HasSuffix(ansi.Strip(result), "…") {
-		t.Fatalf("task line was not truncated to columns: %q", result)
-	}
-}
-
 func TestGenerateUsesDefaultEmojiIcons(t *testing.T) {
 	cfg := config.DefaultConfig()
 	ids := []config.SegmentID{

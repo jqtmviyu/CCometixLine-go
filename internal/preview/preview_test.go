@@ -38,9 +38,6 @@ func TestRenderUsesConfiguredSegmentsAndLayout(t *testing.T) {
 	if strings.Contains(first, "main") {
 		t.Fatalf("disabled git segment was rendered: %q", first)
 	}
-	if !strings.Contains(first, "subagentStatusLine") || !strings.Contains(first, "Reviewing model config") {
-		t.Fatalf("missing task layout preview: %q", first)
-	}
 	if !strings.Contains(first, "\n") {
 		t.Fatalf("expected preview to preserve configured rows: %q", first)
 	}
@@ -51,7 +48,6 @@ func TestRenderShowsNoEnabledSegments(t *testing.T) {
 	for i := range cfg.Segments {
 		cfg.Segments[i].Enabled = false
 	}
-	cfg.Layout.Task = nil
 	got := Render(cfg)
 	if !strings.Contains(got, "没有启用且可预览的 segment") {
 		t.Fatalf("unexpected empty preview: %q", got)

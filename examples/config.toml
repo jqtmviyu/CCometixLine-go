@@ -8,9 +8,6 @@ environment_seconds = 60
 [style]
 separator = " | "
 
-[layout]
-task = ["task.status", "task.name", "task.label", "task.elapsed", "task.trend"]
-
 [[layout.lines]]
 segments = ["model", "directory", "git", "context_window"]
 

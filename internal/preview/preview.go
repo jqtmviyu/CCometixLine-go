@@ -25,22 +25,6 @@ func Render(cfg config.Config) string {
 	} else {
 		fmt.Fprintln(&output, "(没有启用且可预览的 segment)")
 	}
-	task := protocol.Task{
-		ID:           "preview-task",
-		Name:         "Inspect cache behavior",
-		Kind:         "local_agent",
-		AgentType:    "Explore",
-		Status:       "running",
-		Description:  "Example background task",
-		Label:        "Reviewing model config",
-		StartTime:    1_700_000_000_000,
-		TokenSamples: []float64{88_000, 94_000},
-	}
-	items := segments.CollectTask(layout.Task, task, facts.Now)
-	if text := generator.GenerateTaskLine(items, 100); text != "" {
-		fmt.Fprintln(&output, "subagentStatusLine")
-		fmt.Fprintln(&output, text)
-	}
 	return strings.TrimSuffix(output.String(), "\n")
 }
 

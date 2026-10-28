@@ -33,7 +33,6 @@ func (c CacheConfig) EnvironmentTTL() time.Duration {
 
 type LayoutConfig struct {
 	Lines []LayoutLine `toml:"lines"`
-	Task  []SegmentID  `toml:"task"`
 }
 
 type LayoutLine struct {
@@ -85,11 +84,6 @@ const (
 	SegmentCost          SegmentID = "cost"
 	SegmentSession       SegmentID = "session"
 	SegmentEnvironment   SegmentID = "environment"
-	SegmentTaskLabel     SegmentID = "task.label"
-	SegmentTaskName      SegmentID = "task.name"
-	SegmentTaskStatus    SegmentID = "task.status"
-	SegmentTaskElapsed   SegmentID = "task.elapsed"
-	SegmentTaskTrend     SegmentID = "task.trend"
 )
 
 func Load() (Config, error) {
@@ -140,7 +134,6 @@ func defaultLayout() LayoutConfig {
 			{Segments: []SegmentID{SegmentModel, SegmentDirectory, SegmentGit, SegmentContextWindow}},
 			{Segments: []SegmentID{SegmentEnvironment, SegmentCost, SegmentSession}},
 		},
-		Task: []SegmentID{SegmentTaskStatus, SegmentTaskName, SegmentTaskLabel, SegmentTaskElapsed, SegmentTaskTrend},
 	}
 }
 
@@ -197,9 +190,6 @@ func applyConfigDefaults(cfg *Config) {
 	if len(cfg.Layout.Lines) == 0 {
 		cfg.Layout.Lines = defaultLayout().Lines
 	}
-	if cfg.Layout.Task == nil {
-		cfg.Layout.Task = defaultLayout().Task
-	}
 
 	if cfg.Theme == "" {
 		cfg.Theme = "default"
@@ -236,11 +226,6 @@ var defaultSegmentDefs = []segmentDefaults{
 	{SegmentCost, false, "💰", 3, 3, nil},
 	{SegmentSession, false, "⏱️", 2, 2, nil},
 	{SegmentEnvironment, true, "🧰", 216, 216, nil},
-	{SegmentTaskLabel, true, "↳", 11, 11, nil},
-	{SegmentTaskName, true, "👤", 14, 14, nil},
-	{SegmentTaskStatus, true, "", 10, 10, nil},
-	{SegmentTaskElapsed, true, "⏱️", 11, 11, nil},
-	{SegmentTaskTrend, true, "💿", 13, 13, nil},
 }
 
 func buildDefaultSegments() []SegmentConfig {

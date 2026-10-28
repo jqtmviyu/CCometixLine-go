@@ -122,9 +122,6 @@ segments = ["model", "git"]
 
 [[layout.lines]]
 segments = ["context_window", "cost"]
-
-[layout]
-task = ["task.status", "task.label"]
 `
 	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 		t.Fatal(err)
@@ -139,9 +136,6 @@ task = ["task.status", "task.label"]
 	}
 	if cfg.Layout.Lines[1].Segments[1] != SegmentCost {
 		t.Fatalf("unexpected second line segments: %#v", cfg.Layout.Lines[1])
-	}
-	if len(cfg.Layout.Task) != 2 || cfg.Layout.Task[0] != SegmentTaskStatus {
-		t.Fatalf("unexpected task layout: %#v", cfg.Layout.Task)
 	}
 }
 

@@ -2,17 +2,11 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
-
-	"ccometixline-go/internal/config"
-	"ccometixline-go/internal/protocol"
-	"ccometixline-go/internal/render"
 )
 
 type forbiddenReader struct {
@@ -114,29 +108,5 @@ func TestRunUnknownCommandShowsUsage(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "usage: ccline [preview]") {
 		t.Fatalf("unexpected usage: %q", stderr.String())
-	}
-}
-
-func TestWriteTaskLinesEmitsTaskJSON(t *testing.T) {
-	cfg := config.DefaultConfig()
-	input := protocol.SubagentInput{
-		Columns: 80,
-		Tasks: []protocol.Task{{
-			ID:     "a1",
-			Status: "running",
-			Label:  "Read \"config\"",
-		}},
-	}
-	var output bytes.Buffer
-	if err := writeTaskLines(&output, render.StatusLineGenerator{Style: cfg.Style, Layout: cfg.ResolveLayout()}, input, time.Now()); err != nil {
-		t.Fatal(err)
-	}
-
-	var line taskLine
-	if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &line); err != nil {
-		t.Fatal(err)
-	}
-	if line.ID != "a1" || !strings.Contains(line.Content, `Read "config"`) {
-		t.Fatalf("unexpected task output: %#v", line)
 	}
 }
